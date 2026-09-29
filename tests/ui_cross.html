@@ -1,0 +1,108 @@
+﻿<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <link rel="stylesheet" href="/css/styles.css">
+  <title>Cross browser UI (sequential)</title>
+</head>
+<body>
+  <header class="site-head">
+    <div class="brand">LudoApp</div>
+    <nav id="main-nav" class="nav-tabs"></nav>
+    <div id="user-bar" class="nav-tabs"></div>
+    <button id="sound-btn" class="btn-ghost text-sm">🔊</button>
+  </header>
+  <main id="app" class="page"></main>
+  <div id="toast-root"></div>
+  <script src="/js/core/data.js"></script>
+  <script src="/js/core/storage.js"></script>
+  <script src="/js/core/questionEngine.js"></script>
+  <script src="/js/core/progressionEngine.js"></script>
+  <script src="/js/ui/ui.js"></script>
+  <script src="/js/games/ludo.js"></script>
+  <script src="/js/games/batalla.js"></script>
+  <script src="/js/games/carrera.js"></script>
+  <script src="/js/games/conquista.js"></script>
+  <script src="/js/app.js"></script>
+  <script src="/js/admin.js"></script>
+  <script src="/js/auth.js"></script>
+  <script src="/js/core/sync.js"></script>
+  <script>
+  var role = (location.search.match(/role=(\w+)/) || [])[1] || 'profe';
+  var step = (location.search.match(/step=(\w+)/) || [])[2] || 'create';
+  var R = { role: role, step: step };
+  function done() {
+    document.documentElement.setAttribute('data-result', JSON.stringify(R));
+  }
+  function btnByText(txt) {
+    var all = document.querySelectorAll('#app button');
+    for (var i = 0; i < all.length; i++) {
+      if (all[i].textContent.indexOf(txt) !== -1) return all[i];
+    }
+    return null;
+  }
+  function appText() { return (document.getElementById('app').innerText || ''); }
+  function vdelay(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+  function waitUntil(fn, ms) {
+    return new Promise(function (resolve) {
+      var t0 = Date.now();
+      (function tick() {
+        var v = fn();
+        if (v) return resolve(v);
+        if (Date.now() - t0 > ms) return resolve(null);
+        setTimeout(tick, 1200);
+      })();
+    });
+  }
+  var A = window.App;
+  A.sync.init().then(function () {
+    R.sync = A.sync.isEnabled() ? 'yes' : 'no';
+    if (role === 'profe' && step === 'create') {
+      A.auth.login('profe', '1234');
+      A.roam.sectionInicio(document.getElementById('app'));
+      if (!btnByText('Crear nueva partida')) { R.err = 'sin boton crear'; return done(); }
+      btnByText('Crear nueva partida').click();
+      var el = document.querySelector('.lobby-code');
+      R.code = el ? el.textContent.replace(/[^A-Z0-9]/g, '') : 'NONE';
+      vdelay(1600).then(function () {
+        R.verifyStorage = A.storage.getLobbies().length === 1 ? 'yes' : 'no';
+        done();
+      });
+    } else if (role === 'alumno' && step === 'join') {
+      A.auth.login('maria', '1234');
+      A.roam.sectionInicio(document.getElementById('app'));
+      waitUntil(function () {
+        var ab = A.storage.getLobbies().filter(function (l) { return l.estado === 'abierta'; });
+        return ab.length ? ab[0] : null;
+      }, 20000).then(function (lobby) {
+        if (!lobby) { R.saw = 'NONE'; return done(); }
+        R.saw = lobby.codigo;
+        var inp = document.querySelector('.join-code');
+        if (inp) inp.value = lobby.codigo;
+        var b = btnByText('Unirme a la sala');
+        if (!b) { R.err = 'sin boton unirme'; return done(); }
+        b.click();
+        return vdelay(1200).then(function () {
+          R.joined = A.storage.getLobbies()[0].jugadores.indexOf(A.auth.currentPlayer().id) !== -1 ? 'yes' : 'no';
+          R.uiJoined = appText().indexOf('Te has unido') !== -1 ? 'yes' : 'no';
+          done();
+        });
+      });
+    } else if (role === 'profe' && step === 'check') {
+      A.auth.login('profe', '1234');
+      A.roam.sectionInicio(document.getElementById('app'));
+      vdelay(1500).then(function () {
+        var l = A.storage.getLobbies().filter(function (x) { return x.jugadores.length > 0; })[0];
+        R.joined = (l && l.jugadores.length > 0) ? 'yes' : 'no';
+        var pid = l ? l.jugadores[0] : null;
+        var pr = pid ? A.storage.getById('players', pid) : null;
+        R.name = pr ? pr.nombre : '?';
+        A.roam.sectionInicio(document.getElementById('app'));
+        R.chip = appText().indexOf('María Torres') !== -1 ? 'yes' : 'no';
+        done();
+      });
+    } else { R.err = 'rol/step desconocido'; done(); }
+  });
+  </script>
+</body>
+</html>

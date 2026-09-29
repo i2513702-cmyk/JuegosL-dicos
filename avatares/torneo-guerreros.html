@@ -1,0 +1,326 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Torneo de guerreros pixel</title>
+<style>
+  :root {
+    --bg: #1b1b22; --panel: #26262f; --text: #eee; --text-dim: #9a9aa5;
+    --hp-good: #4caf6b; --hp-mid: #d9a52a; --hp-bad: #c0392b; --accent: #6a6ad0;
+  }
+  * { box-sizing: border-box; }
+  body { font-family: -apple-system, sans-serif; background: var(--bg); color: var(--text); margin:0; padding:16px; }
+  h1 { font-size:16px; font-weight:600; margin:0 0 4px; }
+  p.hint { color: var(--text-dim); font-size:12px; margin:0 0 16px; max-width:640px; }
+  .layout { display:flex; gap:16px; flex-wrap:wrap; max-width:900px; margin:0 auto; }
+  .arena { background: var(--panel); border-radius:10px; padding:16px; flex: 1 1 480px; }
+  canvas#stage { image-rendering: pixelated; display:block; margin:0 auto; background:#2f2f3a; border-radius:8px; width:100%; max-width:460px; height:auto; }
+  .bars { display:flex; justify-content:space-between; max-width:460px; margin:8px auto 0; font-size:12px; }
+  .bar-wrap { width:44%; }
+  .bar-name { display:flex; justify-content:space-between; margin-bottom:2px; }
+  .bar-bg { background:#111; border-radius:6px; height:10px; overflow:hidden; }
+  .bar-fill { height:100%; background:var(--hp-good); transition: width 0.35s ease; }
+  .log { margin-top:10px; font-size:12px; color:var(--text-dim); min-height:20px; text-align:center; }
+  .bracket { background: var(--panel); border-radius:10px; padding:16px; flex: 1 1 260px; font-size:13px; }
+  .bracket h2 { font-size:13px; margin:0 0 8px; font-weight:600; color:var(--text-dim); text-transform:uppercase; letter-spacing:0.03em; }
+  .round { margin-bottom:14px; }
+  .round .label { color: var(--text-dim); font-size:11px; margin-bottom:4px; }
+  .match { padding:6px 8px; border-radius:6px; background:#1f1f28; margin-bottom:4px; display:flex; justify-content:space-between; }
+  .match.done { color: var(--text-dim); }
+  .match .win { color: var(--hp-good); font-weight:600; }
+  .match .pending { color: var(--text-dim); }
+  button { margin-top:12px; font-size:13px; padding:8px 14px; border-radius:8px; border:none; background:var(--accent); color:#fff; cursor:pointer; }
+  button:disabled { opacity:0.5; cursor:default; }
+  .champion { text-align:center; font-size:15px; font-weight:600; color:var(--hp-good); min-height:22px; margin-top:8px; }
+</style>
+</head>
+<body>
+
+<h1>Torneo pixel: 5 guerreros</h1>
+<p class="hint">2 parejas pelean primero; sus ganadores se enfrentan; el 5to guerrero espera y pelea contra quien quede en pie. Cada combate resuelve ataque, defensa y curación automáticamente. Duración total aproximada: 1 minuto.</p>
+
+<div class="layout">
+  <div class="arena">
+    <canvas id="stage" width="460" height="220"></canvas>
+    <div class="bars">
+      <div class="bar-wrap">
+        <div class="bar-name"><span id="nameA">-</span><span id="hpA">100</span></div>
+        <div class="bar-bg"><div class="bar-fill" id="fillA"></div></div>
+      </div>
+      <div class="bar-wrap">
+        <div class="bar-name"><span id="nameB">-</span><span id="hpB">100</span></div>
+        <div class="bar-bg"><div class="bar-fill" id="fillB"></div></div>
+      </div>
+    </div>
+    <div class="log" id="log">Preparando torneo…</div>
+    <div class="champion" id="champion"></div>
+    <button id="restartBtn" disabled>Reiniciar torneo</button>
+  </div>
+
+  <div class="bracket">
+    <h2>Llave</h2>
+    <div class="round">
+      <div class="label">Ronda 1</div>
+      <div class="match" id="m1"><span></span><span class="pending">...</span></div>
+      <div class="match" id="m2"><span></span><span class="pending">...</span></div>
+    </div>
+    <div class="round">
+      <div class="label">Ronda 2</div>
+      <div class="match" id="m3"><span></span><span class="pending">...</span></div>
+    </div>
+    <div class="round">
+      <div class="label">Final (vs 5to guerrero)</div>
+      <div class="match" id="m4"><span></span><span class="pending">...</span></div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ---------- SPRITES (misma base que la galería anterior) ----------
+const CHARACTERS = [
+  { id:'espadachin', name:'Espadachín',       skin:'#e8b88a', armor:'#3a5a8a', head:'#9a9a9a', boots:'#2a2a2a', weapon:'sword',     weaponColor:'#c0c0c0' },
+  { id:'barbaro',    name:'Bárbaro',          skin:'#d0a070', armor:'#6a5a3a', head:'#5a3a1a', boots:'#3a2a1a', weapon:'axe',        weaponColor:'#9a9a9a' },
+  { id:'caballero',  name:'Caballero',        skin:'#f0c9a0', armor:'#3a5a8a', head:'#c0a020', boots:'#2a2a3a', weapon:'sword',      weaponColor:'#c0c0c0', shield:true, shieldColor:'#c0a020' },
+  { id:'lancero',    name:'Lancero',          skin:'#e8b88a', armor:'#2f6f4a', head:'#2a2a2a', boots:'#1a1a1a', weapon:'spear',      weaponColor:'#8a6a3a' },
+  { id:'sombrio',    name:'Guerrero sombrío', skin:'#d8b090', armor:'#2a2a3a', head:'#141414', boots:'#0e0e0e', weapon:'dualblade',  weaponColor:'#8a2f2f' },
+];
+
+function drawBody(ctx, ox, oy, ps, c, pose, facing) {
+  ctx.save();
+  if (facing === 'left') { ctx.translate(ox + 16*ps, oy); ctx.scale(-1,1); ox = 0; oy = 0; }
+  const px = (gx,gy,gw,gh,color) => { ctx.fillStyle=color; ctx.fillRect(ox+gx*ps, oy+gy*ps, gw*ps, gh*ps); };
+
+  const crouch = pose === 'defend';
+  const torsoY = crouch ? 8 : 7;
+
+  if (crouch) { px(4,11,3,3,c.boots); px(9,11,3,3,c.boots); }
+  else        { px(5,11,3,3,c.boots); px(8,11,3,3,c.boots); }
+
+  px(3,torsoY,10,5,c.armor);
+  px(4,1,8,2,c.head);
+  px(4,3,8,3,c.skin);
+  px(5,4,1,1,'#2a2a2a'); px(10,4,1,1,'#2a2a2a');
+
+  if (pose === 'idle') {
+    px(1,torsoY,2,4,c.skin);
+    px(12,torsoY,2,4,c.skin);
+    drawWeapon(ctx, ox,oy,ps,c,'idle');
+  } else if (pose === 'attack') {
+    px(1,torsoY,2,3,c.skin);
+    px(11,torsoY-1,3,2,c.skin);
+    drawWeapon(ctx, ox,oy,ps,c,'attack');
+    ctx.strokeStyle = '#e0c060'; ctx.lineWidth = Math.max(1, ps*0.15);
+    ctx.beginPath();
+    ctx.moveTo(ox+15*ps, oy+3*ps); ctx.lineTo(ox+17*ps, oy+1.5*ps);
+    ctx.moveTo(ox+15.5*ps, oy+5.5*ps); ctx.lineTo(ox+18*ps, oy+5.5*ps);
+    ctx.moveTo(ox+15*ps, oy+8*ps); ctx.lineTo(ox+17*ps, oy+9.5*ps);
+    ctx.stroke();
+  } else if (pose === 'defend') {
+    if (c.shield) {
+      px(0,torsoY-1,3,7,c.shieldColor);
+      px(1,torsoY+1,1,3,'#8a6a10');
+    } else {
+      px(1,torsoY,3,3,c.skin);
+      drawWeapon(ctx, ox,oy,ps,c,'defend');
+    }
+    px(12,torsoY,2,4,c.skin);
+    ctx.strokeStyle = '#c0c0f0'; ctx.lineWidth = Math.max(1, ps*0.12);
+    ctx.beginPath();
+    ctx.moveTo(ox+1*ps, oy+5*ps); ctx.lineTo(ox-1*ps, oy+4*ps);
+    ctx.moveTo(ox+1*ps, oy+7*ps); ctx.lineTo(ox-1*ps, oy+8*ps);
+    ctx.stroke();
+  } else if (pose === 'heal') {
+    px(1,torsoY-3,2,7,c.skin);
+    px(12,torsoY-3,2,7,c.skin);
+    ctx.fillStyle = 'rgba(120,220,160,0.35)';
+    ctx.beginPath(); ctx.arc(ox+8*ps, oy-1*ps, ps*3, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#6fd08a';
+    ctx.beginPath(); ctx.arc(ox+8*ps, oy-1*ps, ps*1.2, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#bff0cf';
+    [[3,0],[13,1],[6,-2.5],[10,-2.5]].forEach(([sx,sy]) => {
+      ctx.fillRect(ox+sx*ps, oy+sy*ps, ps*0.6, ps*0.6);
+    });
+  }
+  ctx.restore();
+}
+
+function drawWeapon(ctx, ox, oy, ps, c, pose) {
+  ctx.save();
+  ctx.fillStyle = c.weaponColor;
+  if (c.weapon === 'sword') {
+    if (pose === 'idle') {
+      ctx.fillRect(ox+13*ps, oy+6*ps, ps, ps*6);
+      ctx.fillStyle = '#6a4a2a'; ctx.fillRect(ox+12.5*ps, oy+11*ps, ps*2, ps);
+    } else if (pose === 'attack') {
+      ctx.translate(ox+13*ps, oy+5*ps); ctx.rotate(-Math.PI/3);
+      ctx.fillRect(0,0,ps,ps*7);
+    } else if (pose === 'defend') {
+      ctx.translate(ox+3*ps, oy+6*ps); ctx.rotate(Math.PI/6);
+      ctx.fillRect(0,0,ps,ps*6);
+    }
+  } else if (c.weapon === 'axe') {
+    if (pose === 'idle') {
+      ctx.fillStyle='#6a4a2a'; ctx.fillRect(ox+13*ps, oy+5*ps, ps*0.8, ps*7);
+      ctx.fillStyle=c.weaponColor; ctx.fillRect(ox+12.5*ps, oy+4*ps, ps*2.2, ps*2.2);
+    } else if (pose === 'attack') {
+      ctx.translate(ox+13*ps, oy+4*ps); ctx.rotate(-Math.PI/2.5);
+      ctx.fillStyle='#6a4a2a'; ctx.fillRect(0,0,ps*0.8,ps*6);
+      ctx.fillStyle=c.weaponColor; ctx.fillRect(-ps*0.7,-ps*0.5,ps*2.2,ps*2.2);
+    } else if (pose === 'defend') {
+      ctx.translate(ox+3*ps, oy+6*ps); ctx.rotate(Math.PI/8);
+      ctx.fillStyle='#6a4a2a'; ctx.fillRect(0,0,ps*0.8,ps*5);
+      ctx.fillStyle=c.weaponColor; ctx.fillRect(-ps*0.7,-ps*1.5,ps*2.2,ps*2);
+    }
+  } else if (c.weapon === 'spear') {
+    if (pose === 'idle') {
+      ctx.fillStyle='#8a6a3a'; ctx.fillRect(ox+13*ps, oy+3*ps, ps*0.8, ps*10);
+      ctx.fillStyle='#c0c0c0'; ctx.fillRect(ox+12.6*ps, oy+1*ps, ps*1.6, ps*2.2);
+    } else if (pose === 'attack') {
+      ctx.translate(ox+7*ps, oy+7*ps);
+      ctx.fillStyle='#8a6a3a'; ctx.fillRect(0,-ps*0.4,ps*11,ps*0.8);
+      ctx.fillStyle='#c0c0c0'; ctx.fillRect(ps*10,-ps*1.1,ps*2.2,ps*1.6);
+    } else if (pose === 'defend') {
+      ctx.translate(ox+2*ps, oy+7*ps); ctx.rotate(-Math.PI/10);
+      ctx.fillStyle='#8a6a3a'; ctx.fillRect(0,-ps*0.4,ps*8,ps*0.8);
+      ctx.fillStyle='#c0c0c0'; ctx.fillRect(-ps*1.6,-ps*1.1,ps*1.8,ps*1.6);
+    }
+  } else if (c.weapon === 'dualblade') {
+    ctx.fillStyle = c.weaponColor;
+    if (pose === 'idle') {
+      ctx.fillRect(ox+1*ps, oy+11*ps, ps*0.8, ps*4);
+      ctx.fillRect(ox+13.2*ps, oy+11*ps, ps*0.8, ps*4);
+    } else if (pose === 'attack') {
+      ctx.save(); ctx.translate(ox+13*ps, oy+5*ps); ctx.rotate(-Math.PI/2.2); ctx.fillRect(0,0,ps*0.8,ps*6); ctx.restore();
+      ctx.save(); ctx.translate(ox+2*ps, oy+5*ps); ctx.rotate(Math.PI/2.2); ctx.fillRect(0,0,ps*0.8,ps*6); ctx.restore();
+    } else if (pose === 'defend') {
+      ctx.save(); ctx.translate(ox+2*ps, oy+5*ps); ctx.rotate(Math.PI/5); ctx.fillRect(0,0,ps*0.8,ps*6); ctx.restore();
+      ctx.save(); ctx.translate(ox+14*ps, oy+5*ps); ctx.rotate(-Math.PI/5); ctx.fillRect(0,0,ps*0.8,ps*6); ctx.restore();
+    }
+  }
+  ctx.restore();
+}
+
+// ---------- LOGICA DEL TORNEO ----------
+const stage = document.getElementById('stage');
+const sctx = stage.getContext('2d');
+const els = {
+  nameA: document.getElementById('nameA'), nameB: document.getElementById('nameB'),
+  hpA: document.getElementById('hpA'), hpB: document.getElementById('hpB'),
+  fillA: document.getElementById('fillA'), fillB: document.getElementById('fillB'),
+  log: document.getElementById('log'), champion: document.getElementById('champion'),
+  restartBtn: document.getElementById('restartBtn'),
+  m1: document.getElementById('m1'), m2: document.getElementById('m2'),
+  m3: document.getElementById('m3'), m4: document.getElementById('m4'),
+};
+
+function hpColor(hp) { return hp > 55 ? 'var(--hp-good)' : hp > 25 ? 'var(--hp-mid)' : 'var(--hp-bad)'; }
+
+function render(fighterA, fighterB, poseA, poseB) {
+  sctx.clearRect(0,0,stage.width,stage.height);
+  drawBody(sctx, 40, 60, 8, fighterA, poseA, 'right');
+  drawBody(sctx, 260, 60, 8, fighterB, poseB, 'left');
+  els.nameA.textContent = fighterA.name; els.nameB.textContent = fighterB.name;
+  els.hpA.textContent = Math.max(0, Math.round(fighterA.hp));
+  els.hpB.textContent = Math.max(0, Math.round(fighterB.hp));
+  els.fillA.style.width = Math.max(0, fighterA.hp) + '%';
+  els.fillB.style.width = Math.max(0, fighterB.hp) + '%';
+  els.fillA.style.background = hpColor(fighterA.hp);
+  els.fillB.style.background = hpColor(fighterB.hp);
+}
+
+function decide(fighter) {
+  if (fighter.hp < 35 && Math.random() < 0.55) return 'heal';
+  if (Math.random() < 0.22) return 'defend';
+  return 'attack';
+}
+
+const ACTION_LABEL = { attack:'ataca', defend:'se defiende', heal:'se cura' };
+
+function runFight(fighterA, fighterB, matchEl, onDone) {
+  fighterA.hp = 100; fighterB.hp = 100;
+  let tick = 0;
+  const maxTicks = 9;
+  els.log.textContent = fighterA.name + ' vs ' + fighterB.name + ' — ¡comienza el combate!';
+  render(fighterA, fighterB, 'idle', 'idle');
+
+  function step() {
+    tick++;
+    const actA = decide(fighterA);
+    const actB = decide(fighterB);
+    let dmgToB = 0, dmgToA = 0;
+
+    if (actA === 'heal') fighterA.hp = Math.min(100, fighterA.hp + 12 + Math.random()*8);
+    if (actB === 'heal') fighterB.hp = Math.min(100, fighterB.hp + 12 + Math.random()*8);
+
+    if (actA === 'attack') {
+      dmgToB = 10 + Math.random()*8;
+      if (actB === 'defend') dmgToB *= 0.3;
+      fighterB.hp -= dmgToB;
+    }
+    if (actB === 'attack') {
+      dmgToA = 10 + Math.random()*8;
+      if (actA === 'defend') dmgToA *= 0.3;
+      fighterA.hp -= dmgToA;
+    }
+    fighterA.hp = Math.max(0, fighterA.hp);
+    fighterB.hp = Math.max(0, fighterB.hp);
+
+    render(fighterA, fighterB, actA, actB);
+    els.log.textContent = fighterA.name + ' ' + ACTION_LABEL[actA] + '  ·  ' + fighterB.name + ' ' + ACTION_LABEL[actB];
+
+    const finished = fighterA.hp <= 0 || fighterB.hp <= 0 || tick >= maxTicks;
+    if (finished) {
+      const winner = fighterA.hp === fighterB.hp ? (Math.random() < 0.5 ? fighterA : fighterB)
+                    : (fighterA.hp > fighterB.hp ? fighterA : fighterB);
+      matchEl.querySelector('span:last-child').textContent = winner.name + ' gana';
+      matchEl.querySelector('span:last-child').className = 'win';
+      matchEl.classList.add('done');
+      els.log.textContent = '¡' + winner.name + ' gana el combate!';
+      setTimeout(() => onDone(winner), 1200);
+    } else {
+      setTimeout(step, 900);
+    }
+  }
+  step();
+}
+
+function setupMatchLabel(matchEl, nameA, nameB) {
+  matchEl.querySelector('span:first-child').textContent = nameA + ' vs ' + nameB;
+}
+
+function startTournament() {
+  els.champion.textContent = '';
+  els.restartBtn.disabled = true;
+  [els.m1, els.m2, els.m3, els.m4].forEach(m => {
+    m.classList.remove('done');
+    m.querySelector('span:last-child').textContent = '...';
+    m.querySelector('span:last-child').className = 'pending';
+  });
+
+  const [p1a, p1b, p2a, p2b, fifth] = CHARACTERS;
+  setupMatchLabel(els.m1, p1a.name, p1b.name);
+  setupMatchLabel(els.m2, p2a.name, p2b.name);
+  els.m3.querySelector('span:first-child').textContent = 'Ganador R1 vs Ganador R2';
+  els.m4.querySelector('span:first-child').textContent = 'Finalista vs ' + fifth.name;
+
+  runFight(p1a, p1b, els.m1, (winner1) => {
+    runFight(p2a, p2b, els.m2, (winner2) => {
+      els.m3.querySelector('span:first-child').textContent = winner1.name + ' vs ' + winner2.name;
+      runFight(winner1, winner2, els.m3, (finalist) => {
+        els.m4.querySelector('span:first-child').textContent = finalist.name + ' vs ' + fifth.name;
+        runFight(finalist, fifth, els.m4, (champion) => {
+          els.champion.textContent = 'Campeón del torneo: ' + champion.name;
+          els.restartBtn.disabled = false;
+        });
+      });
+    });
+  });
+}
+
+els.restartBtn.onclick = startTournament;
+startTournament();
+</script>
+
+</body>
+</html>

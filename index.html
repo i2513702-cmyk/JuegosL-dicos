@@ -1,0 +1,51 @@
+﻿<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LudoApp · Ludoteca de Preguntas</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css">
+  <link rel="stylesheet" href="css/styles.css">
+</head>
+<body>
+  <header class="site-head">
+    <div class="brand">🎓 LudoApp <span class="brand-sub">· Ludoteca de Preguntas</span></div>
+    <nav id="main-nav" class="nav-tabs"></nav>
+    <div id="user-bar" class="nav-tabs"></div>
+    <button id="sound-btn" class="btn-ghost text-sm" title="Activar o silenciar sonidos">🔊</button>
+  </header>
+
+  <main id="app" class="page"></main>
+
+  <footer class="site-foot">
+    Juego educativo · Matemáticas, Lengua, Ciencias, Historia y más · Baraja personalizada por el docente
+  </footer>
+
+  <div id="toast-root" class="toast-root"></div>
+
+  <script src="js/core/data.js"></script>
+  <script src="js/core/storage.js"></script>
+  <script src="js/core/questionEngine.js"></script>
+  <script src="js/core/progressionEngine.js"></script>
+  <script src="js/core/avatars.js"></script>
+  <script src="js/core/gamekit.js"></script>
+  <script src="js/ui/ui.js"></script>
+  <script src="js/games/ludo.js"></script>
+  <script src="js/games/batalla.js"></script>
+  <script src="js/games/carrera.js"></script>
+  <script src="js/games/conquista.js"></script>
+  <script src="js/app.js"></script>
+  <script src="js/admin.js"></script>
+  <script src="js/auth.js"></script>
+  <script src="js/core/sync.js"></script>
+  <script>
+    document.getElementById('sound-btn').addEventListener('click', function () {
+      var on = App.ui.toggleSound();
+      this.textContent = on ? '🔊' : '🔇';
+    });
+    var boot = function () { App.boot(); };
+    if (App.sync && App.sync.init) App.sync.init().then(boot);
+    else boot();
+  </script>
+</body>
+</html>

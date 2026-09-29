@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Avatares guerreros pixelados</title>
+<style>
+  body { font-family: sans-serif; background:#1e1e26; color:#eee; margin:0; padding:24px; }
+  h1 { font-size:18px; font-weight:600; }
+  p.hint { color:#aaa; font-size:13px; max-width:640px; }
+  canvas { image-rendering: pixelated; display:block; margin:0 auto; background:#2a2a33; border-radius:8px; }
+  .demo { margin-top:32px; padding:16px; background:#2a2a33; border-radius:8px; max-width:400px; }
+  .demo select, .demo button { font-size:14px; padding:6px 10px; margin:4px 4px 4px 0; border-radius:6px; border:1px solid #555; background:#3a3a45; color:#eee; cursor:pointer; }
+  .demo button.active { background:#5a5aaa; }
+  code { background:#000; padding:2px 6px; border-radius:4px; }
+</style>
+</head>
+<body>
+
+<h1>Galería de avatares guerreros (16x16, estilo pixel art)</h1>
+<p class="hint">5 personajes x 4 estados (reposo, ataque, defensa, curación). Dibujados con <code>fillRect</code> en canvas, sin imágenes externas.</p>
+
+<canvas id="gallery"></canvas>
+
+<div class="demo">
+  <div>
+    <select id="charSelect"></select>
+  </div>
+  <div id="stateButtons"></div>
+  <canvas id="preview" width="240" height="240"></canvas>
+</div>
+
+<script>
+// ---------- DATOS DE PERSONAJES ----------
+// Copia este bloque completo (CHARACTERS, STATES, drawBody, drawWeapon)
+// a tu propio proyecto para reutilizar los sprites.
+
+const CHARACTERS = [
+  { id:'espadachin', name:'Espadachín',       skin:'#e8b88a', armor:'#3a5a8a', head:'#9a9a9a', boots:'#2a2a2a', weapon:'sword',     weaponColor:'#c0c0c0' },
+  { id:'barbaro',    name:'Bárbaro',          skin:'#d0a070', armor:'#6a5a3a', head:'#5a3a1a', boots:'#3a2a1a', weapon:'axe',        weaponColor:'#9a9a9a' },
+  { id:'caballero',  name:'Caballero',        skin:'#f0c9a0', armor:'#3a5a8a', head:'#c0a020', boots:'#2a2a3a', weapon:'sword',      weaponColor:'#c0c0c0', shield:true, shieldColor:'#c0a020' },
+  { id:'lancero',    name:'Lancero',          skin:'#e8b88a', armor:'#2f6f4a', head:'#2a2a2a', boots:'#1a1a1a', weapon:'spear',      weaponColor:'#8a6a3a' },
+  { id:'sombrio',    name:'Guerrero sombrío', skin:'#d8b090', armor:'#2a2a3a', head:'#141414', boots:'#0e0e0e', weapon:'dualblade',  weaponColor:'#8a2f2f' },
+];
+
+const STATES = ['idle', 'attack', 'defend', 'heal'];
+const STATE_LABELS = { idle:'reposo', attack:'ataque', defend:'defensa', heal:'curación' };
+
+// px(gx,gy,gw,gh,color) dibuja un bloque en unidades de grilla (0..16)
+function drawBody(ctx, ox, oy, ps, c, pose) {
+  const px = (gx,gy,gw,gh,color) => { ctx.fillStyle=color; ctx.fillRect(ox+gx*ps, oy+gy*ps, gw*ps, gh*ps); };
+
+  const crouch = pose === 'defend';
+  const torsoY = crouch ? 8 : 7;
+
+  // piernas
+  if (crouch) { px(4,11,3,3,c.boots); px(9,11,3,3,c.boots); }
+  else        { px(5,11,3,3,c.boots); px(8,11,3,3,c.boots); }
+
+  // torso
+  px(3,torsoY,10,5,c.armor);
+
+  // cabeza
+  px(4,1,8,2,c.head);
+  px(4,3,8,3,c.skin);
+  px(5,4,1,1,'#2a2a2a'); px(10,4,1,1,'#2a2a2a');
+
+  ctx.save();
+  if (pose === 'idle') {
+    px(1,torsoY,2,4,c.skin);
+    px(12,torsoY,2,4,c.skin);
+    drawWeapon(ctx, ox,oy,ps,c,'idle');
+
+  } else if (pose === 'attack') {
+    px(1,torsoY,2,3,c.skin);
+    px(11,torsoY-1,3,2,c.skin);
+    drawWeapon(ctx, ox,oy,ps,c,'attack');
+    ctx.strokeStyle = '#e0c060'; ctx.lineWidth = Math.max(1, ps*0.15);
+    ctx.beginPath();
+    ctx.moveTo(ox+15*ps, oy+3*ps); ctx.lineTo(ox+17*ps, oy+1.5*ps);
+    ctx.moveTo(ox+15.5*ps, oy+5.5*ps); ctx.lineTo(ox+18*ps, oy+5.5*ps);
+    ctx.moveTo(ox+15*ps, oy+8*ps); ctx.lineTo(ox+17*ps, oy+9.5*ps);
+    ctx.stroke();
+
+  } else if (pose === 'defend') {
+    if (c.shield) {
+      px(0,torsoY-1,3,7,c.shieldColor);
+      px(1,torsoY+1,1,3,'#8a6a10');
+    } else {
+      px(1,torsoY,3,3,c.skin);
+      drawWeapon(ctx, ox,oy,ps,c,'defend');
+    }
+    px(12,torsoY,2,4,c.skin);
+    ctx.strokeStyle = '#c0c0f0'; ctx.lineWidth = Math.max(1, ps*0.12);
+    ctx.beginPath();
+    ctx.moveTo(ox+1*ps, oy+5*ps); ctx.lineTo(ox-1*ps, oy+4*ps);
+    ctx.moveTo(ox+1*ps, oy+7*ps); ctx.lineTo(ox-1*ps, oy+8*ps);
+    ctx.stroke();
+
+  } else if (pose === 'heal') {
+    px(1,torsoY-3,2,7,c.skin);
+    px(12,torsoY-3,2,7,c.skin);
+    ctx.fillStyle = 'rgba(120,220,160,0.35)';
+    ctx.beginPath(); ctx.arc(ox+8*ps, oy-1*ps, ps*3, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#6fd08a';
+    ctx.beginPath(); ctx.arc(ox+8*ps, oy-1*ps, ps*1.2, 0, Math.PI*2); ctx.fill();
+    ctx.fillStyle = '#bff0cf';
+    [[3,0],[13,1],[6,-2.5],[10,-2.5]].forEach(([sx,sy]) => {
+      ctx.fillRect(ox+sx*ps, oy+sy*ps, ps*0.6, ps*0.6);
+    });
+  }
+  ctx.restore();
+}
+
+function drawWeapon(ctx, ox, oy, ps, c, pose) {
+  ctx.save();
+  ctx.fillStyle = c.weaponColor;
+
+  if (c.weapon === 'sword') {
+    if (pose === 'idle') {
+      ctx.fillRect(ox+13*ps, oy+6*ps, ps, ps*6);
+      ctx.fillStyle = '#6a4a2a'; ctx.fillRect(ox+12.5*ps, oy+11*ps, ps*2, ps);
+    } else if (pose === 'attack') {
+      ctx.translate(ox+13*ps, oy+5*ps); ctx.rotate(-Math.PI/3);
+      ctx.fillRect(0,0,ps,ps*7);
+    } else if (pose === 'defend') {
+      ctx.translate(ox+3*ps, oy+6*ps); ctx.rotate(Math.PI/6);
+      ctx.fillRect(0,0,ps,ps*6);
+    }
+
+  } else if (c.weapon === 'axe') {
+    if (pose === 'idle') {
+      ctx.fillStyle='#6a4a2a'; ctx.fillRect(ox+13*ps, oy+5*ps, ps*0.8, ps*7);
+      ctx.fillStyle=c.weaponColor; ctx.fillRect(ox+12.5*ps, oy+4*ps, ps*2.2, ps*2.2);
+    } else if (pose === 'attack') {
+      ctx.translate(ox+13*ps, oy+4*ps); ctx.rotate(-Math.PI/2.5);
+      ctx.fillStyle='#6a4a2a'; ctx.fillRect(0,0,ps*0.8,ps*6);
+      ctx.fillStyle=c.weaponColor; ctx.fillRect(-ps*0.7,-ps*0.5,ps*2.2,ps*2.2);
+    } else if (pose === 'defend') {
+      ctx.translate(ox+3*ps, oy+6*ps); ctx.rotate(Math.PI/8);
+      ctx.fillStyle='#6a4a2a'; ctx.fillRect(0,0,ps*0.8,ps*5);
+      ctx.fillStyle=c.weaponColor; ctx.fillRect(-ps*0.7,-ps*1.5,ps*2.2,ps*2);
+    }
+
+  } else if (c.weapon === 'spear') {
+    if (pose === 'idle') {
+      ctx.fillStyle='#8a6a3a'; ctx.fillRect(ox+13*ps, oy+3*ps, ps*0.8, ps*10);
+      ctx.fillStyle='#c0c0c0'; ctx.fillRect(ox+12.6*ps, oy+1*ps, ps*1.6, ps*2.2);
+    } else if (pose === 'attack') {
+      ctx.translate(ox+7*ps, oy+7*ps);
+      ctx.fillStyle='#8a6a3a'; ctx.fillRect(0,-ps*0.4,ps*11,ps*0.8);
+      ctx.fillStyle='#c0c0c0'; ctx.fillRect(ps*10,-ps*1.1,ps*2.2,ps*1.6);
+    } else if (pose === 'defend') {
+      ctx.translate(ox+2*ps, oy+7*ps); ctx.rotate(-Math.PI/10);
+      ctx.fillStyle='#8a6a3a'; ctx.fillRect(0,-ps*0.4,ps*8,ps*0.8);
+      ctx.fillStyle='#c0c0c0'; ctx.fillRect(-ps*1.6,-ps*1.1,ps*1.8,ps*1.6);
+    }
+
+  } else if (c.weapon === 'dualblade') {
+    ctx.fillStyle = c.weaponColor;
+    if (pose === 'idle') {
+      ctx.fillRect(ox+1*ps, oy+11*ps, ps*0.8, ps*4);
+      ctx.fillRect(ox+13.2*ps, oy+11*ps, ps*0.8, ps*4);
+    } else if (pose === 'attack') {
+      ctx.save(); ctx.translate(ox+13*ps, oy+5*ps); ctx.rotate(-Math.PI/2.2); ctx.fillRect(0,0,ps*0.8,ps*6); ctx.restore();
+      ctx.save(); ctx.translate(ox+2*ps, oy+5*ps); ctx.rotate(Math.PI/2.2); ctx.fillRect(0,0,ps*0.8,ps*6); ctx.restore();
+    } else if (pose === 'defend') {
+      ctx.save(); ctx.translate(ox+2*ps, oy+5*ps); ctx.rotate(Math.PI/5); ctx.fillRect(0,0,ps*0.8,ps*6); ctx.restore();
+      ctx.save(); ctx.translate(ox+14*ps, oy+5*ps); ctx.rotate(-Math.PI/5); ctx.fillRect(0,0,ps*0.8,ps*6); ctx.restore();
+    }
+  }
+  ctx.restore();
+}
+
+// ---------- GALERÍA ----------
+const gallery = document.getElementById('gallery');
+const gctx = gallery.getContext('2d');
+const cellW = 110, cellH = 150, ps1 = 5;
+gallery.width = cellW * CHARACTERS.length;
+gallery.height = cellH * STATES.length;
+gctx.font = '11px sans-serif';
+gctx.fillStyle = '#ccc';
+gctx.textAlign = 'center';
+
+STATES.forEach((state, row) => {
+  CHARACTERS.forEach((c, col) => {
+    const ox = col*cellW + 20, oy = row*cellH + 20;
+    drawBody(gctx, ox, oy, ps1, c, state);
+    gctx.fillStyle = '#ccc';
+    gctx.fillText(c.name, col*cellW + cellW/2, row*cellH + 135);
+    gctx.fillStyle = '#888';
+    gctx.fillText(STATE_LABELS[state], col*cellW + cellW/2, row*cellH + 148);
+  });
+});
+
+// ---------- DEMO INTERACTIVA ----------
+const charSelect = document.getElementById('charSelect');
+CHARACTERS.forEach(c => {
+  const opt = document.createElement('option');
+  opt.value = c.id; opt.textContent = c.name;
+  charSelect.appendChild(opt);
+});
+
+const stateButtonsDiv = document.getElementById('stateButtons');
+let currentState = 'idle';
+STATES.forEach(s => {
+  const btn = document.createElement('button');
+  btn.textContent = STATE_LABELS[s];
+  btn.dataset.state = s;
+  if (s === currentState) btn.classList.add('active');
+  btn.onclick = () => {
+    currentState = s;
+    [...stateButtonsDiv.children].forEach(b => b.classList.remove('active'));
+    btn.classList.add('active');
+    renderPreview();
+  };
+  stateButtonsDiv.appendChild(btn);
+});
+
+const preview = document.getElementById('preview');
+const pctx = preview.getContext('2d');
+
+function renderPreview() {
+  pctx.clearRect(0,0,preview.width,preview.height);
+  const c = CHARACTERS.find(ch => ch.id === charSelect.value);
+  drawBody(pctx, 30, 40, 12, c, currentState);
+}
+charSelect.onchange = renderPreview;
+renderPreview();
+</script>
+
+</body>
+</html>

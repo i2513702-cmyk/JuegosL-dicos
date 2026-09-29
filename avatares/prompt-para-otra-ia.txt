@@ -1,0 +1,30 @@
+Eres un asistente técnico que va a trabajar sobre un sistema educativo gamificado
+con 4 modos de juego (Batalla, Ludo, Carrera, Conquista de territorios) que
+comparten el mismo elenco de 5 avatares pixelados.
+
+Antes de proponer o generar nada, lee el archivo
+"documentacion-sistema-avatares.md" incluido en este zip. Contiene:
+- La estructura de datos de cada avatar (id, colores, arma).
+- El significado de los 4 estados/acciones (idle, attack, defend, heal) y su
+  efecto numérico en el modo Batalla.
+- Las reglas simplificadas de cada uno de los 4 modos de juego, en JSON.
+- Qué comparten los modos entre sí (mismo elenco de avatares, mismo id como
+  clave) y qué NO comparten todavía (no hay conexión real con un banco de
+  preguntas; todas las decisiones dentro de los modos son aleatorias).
+
+El zip también incluye el código fuente HTML/JS funcional de los 4 prototipos
+(avatares-guerreros.html es la galería base de sprites; torneo-guerreros.html
+es Batalla; ludo-avatares.html, carrera-avatares.html y conquista-avatares.html
+son los otros 3 modos), por si necesitas revisar la implementación real además
+de la documentación.
+
+Tu tarea: [completa aquí lo que quieras pedirle — por ejemplo: "proponer cómo
+conectar las 4 modalidades con el banco de preguntas real, de forma que las
+acciones (atacar, moverse, avanzar, capturar territorio) dependan de
+respuestas correctas en vez de ser aleatorias" o "generar 5 avatares nuevos
+siguiendo la misma estructura de datos" o "diseñar el sistema de puntos, XP
+y monedas que conecte los 4 modos"].
+
+Responde primero con un resumen de tu entendimiento del sistema (para que yo
+confirme que interpretaste bien la documentación) antes de generar la
+propuesta final.

@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Ludo de guerreros pixel</title>
+<style>
+  :root { --bg:#1b1b22; --panel:#26262f; --text:#eee; --text-dim:#9a9aa5; --accent:#6a6ad0; }
+  * { box-sizing:border-box; }
+  body { font-family:-apple-system,sans-serif; background:var(--bg); color:var(--text); margin:0; padding:16px; }
+  h1 { font-size:16px; font-weight:600; margin:0 0 4px; }
+  p.hint { color:var(--text-dim); font-size:12px; margin:0 0 16px; max-width:600px; }
+  .layout { display:flex; gap:16px; flex-wrap:wrap; max-width:820px; margin:0 auto; }
+  .board-panel { background:var(--panel); border-radius:10px; padding:16px; flex:1 1 420px; text-align:center; }
+  canvas#board { image-rendering:pixelated; background:#2f2f3a; border-radius:8px; max-width:100%; height:auto; }
+  .dice { margin-top:10px; font-size:28px; }
+  .turn { font-size:13px; color:var(--text-dim); margin-top:4px; }
+  .side { background:var(--panel); border-radius:10px; padding:16px; flex:1 1 200px; font-size:13px; }
+  .side h2 { font-size:12px; text-transform:uppercase; letter-spacing:0.03em; color:var(--text-dim); margin:0 0 8px; }
+  .player-row { display:flex; justify-content:space-between; padding:6px 8px; border-radius:6px; background:#1f1f28; margin-bottom:6px; }
+  .player-row .prog { color:var(--text-dim); }
+  .winner-row { color:#4caf6b; font-weight:600; }
+  .champion { text-align:center; font-size:15px; font-weight:600; color:#4caf6b; min-height:22px; margin-top:10px; }
+  button { margin-top:12px; font-size:13px; padding:8px 14px; border-radius:8px; border:none; background:var(--accent); color:#fff; cursor:pointer; }
+  button:disabled { opacity:0.5; cursor:default; }
+</style>
+</head>
+<body>
+
+<h1>Ludo pixel: camino de 32 casillas</h1>
+<p class="hint">Versión simplificada: una ficha por avatar, dado automático del 1 al 6, gana quien complete la vuelta primero.</p>
+
+<div class="layout">
+  <div class="board-panel">
+    <canvas id="board" width="400" height="400"></canvas>
+    <div class="dice" id="dice">🎲</div>
+    <div class="turn" id="turnLabel">Preparando…</div>
+    <button id="restartBtn" disabled>Reiniciar</button>
+  </div>
+  <div class="side">
+    <h2>Jugadores</h2>
+    <div id="players"></div>
+    <div class="champion" id="champion"></div>
+  </div>
+</div>
+
+<script>
+const CHARACTERS = [
+  { id:'espadachin', name:'Espadachín',       skin:'#e8b88a', armor:'#3a5a8a', head:'#9a9a9a', boots:'#2a2a2a', weapon:'sword',    weaponColor:'#c0c0c0' },
+  { id:'barbaro',    name:'Bárbaro',          skin:'#d0a070', armor:'#6a5a3a', head:'#5a3a1a', boots:'#3a2a1a', weapon:'axe',       weaponColor:'#9a9a9a' },
+  { id:'caballero',  name:'Caballero',        skin:'#f0c9a0', armor:'#3a5a8a', head:'#c0a020', boots:'#2a2a3a', weapon:'sword',     weaponColor:'#c0c0c0', shield:true, shieldColor:'#c0a020' },
+  { id:'lancero',    name:'Lancero',          skin:'#e8b88a', armor:'#2f6f4a', head:'#2a2a2a', boots:'#1a1a1a', weapon:'spear',     weaponColor:'#8a6a3a' },
+  { id:'sombrio',    name:'Guerrero sombrío', skin:'#d8b090', armor:'#2a2a3a', head:'#141414', boots:'#0e0e0e', weapon:'dualblade', weaponColor:'#8a2f2f' },
+];
+
+function drawAvatarIcon(ctx, ox, oy, ps, c) {
+  const px = (gx,gy,gw,gh,color) => { ctx.fillStyle=color; ctx.fillRect(ox+gx*ps, oy+gy*ps, gw*ps, gh*ps); };
+  px(5,11,3,3,c.boots); px(8,11,3,3,c.boots);
+  px(3,7,10,5,c.armor);
+  px(4,1,8,2,c.head);
+  px(4,3,8,3,c.skin);
+  px(5,4,1,1,'#2a2a2a'); px(10,4,1,1,'#2a2a2a');
+  px(1,7,2,4,c.skin); px(12,7,2,4,c.skin);
+  ctx.fillStyle = c.weaponColor;
+  ctx.fillRect(ox+13*ps, oy+6*ps, ps, ps*6);
+}
+
+// ---------- tablero: camino perimetral 9x9 ----------
+const N = 9, CELL = 38, OFFSET = 20;
+function buildPath() {
+  const path = [];
+  for (let x=0;x<N;x++) path.push({x,y:0});
+  for (let y=1;y<N;y++) path.push({x:N-1,y});
+  for (let x=N-2;x>=0;x--) path.push({x,y:N-1});
+  for (let y=N-2;y>=1;y--) path.push({x:0,y});
+  return path;
+}
+const PATH = buildPath();
+
+const board = document.getElementById('board');
+const bctx = board.getContext('2d');
+const diceEl = document.getElementById('dice');
+const turnEl = document.getElementById('turnLabel');
+const playersEl = document.getElementById('players');
+const championEl = document.getElementById('champion');
+const restartBtn = document.getElementById('restartBtn');
+
+let players = [];
+
+function cellPx(cell) {
+  return { px: OFFSET + cell.x*CELL, py: OFFSET + cell.y*CELL };
+}
+
+function render() {
+  bctx.clearRect(0,0,board.width,board.height);
+  PATH.forEach(cell => {
+    const {px,py} = cellPx(cell);
+    bctx.fillStyle = '#33333f';
+    bctx.fillRect(px, py, CELL-2, CELL-2);
+  });
+  players.forEach(p => {
+    const {px,py} = cellPx(PATH[p.start]);
+    bctx.fillStyle = p.char.armor + '55';
+    bctx.fillRect(px, py, CELL-2, CELL-2);
+  });
+  players.forEach((p, i) => {
+    const idx = (p.start + p.steps) % PATH.length;
+    const {px,py} = cellPx(PATH[idx]);
+    const jitterX = (i % 3) * 6, jitterY = Math.floor(i/3) * 6;
+    drawAvatarIcon(bctx, px + jitterX, py + jitterY, 1.6, p.char);
+  });
+}
+
+function renderSide() {
+  playersEl.innerHTML = '';
+  const ranked = [...players].sort((a,b) => b.steps - a.steps);
+  ranked.forEach(p => {
+    const row = document.createElement('div');
+    row.className = 'player-row' + (p.steps >= PATH.length ? ' winner-row' : '');
+    row.innerHTML = '<span>' + p.char.name + '</span><span class="prog">' + Math.min(p.steps, PATH.length) + '/' + PATH.length + '</span>';
+    playersEl.appendChild(row);
+  });
+}
+
+function startGame() {
+  championEl.textContent = '';
+  restartBtn.disabled = true;
+  const startSpacing = Math.floor(PATH.length / CHARACTERS.length);
+  players = CHARACTERS.map((c,i) => ({ char:c, start: i*startSpacing, steps:0 }));
+  render(); renderSide();
+  turnEl.textContent = 'Comienza la partida…';
+  setTimeout(() => turnLoop(0), 800);
+}
+
+function turnLoop(turnIndex) {
+  const p = players[turnIndex % players.length];
+  if (p.finished) { setTimeout(() => turnLoop(turnIndex+1), 50); return; }
+
+  const roll = 1 + Math.floor(Math.random()*6);
+  diceEl.textContent = ['⚀','⚁','⚂','⚃','⚄','⚅'][roll-1];
+  turnEl.textContent = p.char.name + ' tira el dado: ' + roll;
+  p.steps += roll;
+
+  let winner = null;
+  if (p.steps >= PATH.length) { p.steps = PATH.length; p.finished = true; winner = p; }
+
+  render(); renderSide();
+
+  if (winner) {
+    championEl.textContent = 'Campeón del Ludo: ' + winner.char.name;
+    restartBtn.disabled = false;
+    return;
+  }
+  setTimeout(() => turnLoop(turnIndex+1), 700);
+}
+
+restartBtn.onclick = startGame;
+startGame();
+</script>
+
+</body>
+</html>
