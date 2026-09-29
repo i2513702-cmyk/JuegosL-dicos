@@ -250,10 +250,8 @@ App.games.carrera = (function (ui) {
         puntos: p.pos + (p.pos >= TOTAL ? 100 : 0), subtitulo: p.pos >= TOTAL ? '¡Cruzó la meta!' : 'Casilla ' + p.pos + '/' + TOTAL
       }));
       if (App.session && App.session.record) App.session.record(config, st, MODE);
-      ui.sound('win');
-      ui.confetti(root);
       ui.toast('🏁 ' + winner.nombre + ' ganó la Carrera', 'success');
-      ui.podium(root, st.map((s, i) => ({
+      App.gamekit.podium(root, st.map((s, i) => ({
         nombre: s.nombre, icono: '🏁', rank: i + 1, subtitulo: s.subtitulo,
         campo1Label: 'Posición', campo1: Math.min(s.puntos, TOTAL), campo2Label: '', campo2: ''
       })), { title: '🎉 ¡' + winner.nombre + ' cruzó la meta!', subtitle: 'Resultado de la Carrera de Preguntas', bonus });

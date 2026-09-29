@@ -172,34 +172,27 @@ if (owner !== -1 && owner < state.players.length) {
       return m < 0 ? 'En base' : (m >= 56 ? '🏆 META' : 'Casilla ' + (m + 1) + '/56');
     }
     function renderAvatars() {
-      playersChips.innerHTML = '';
       const act = state.players[state.turn];
-      state.players.forEach((p, i) => {
-        const chip = ui.el('div', 'l-chip' + (p.id === act.id ? ' l-chip-active' : ''), '');
-        chip.appendChild(App.avatars.badge(p.avatar || App.avatars.pick(i), 22));
-        chip.appendChild(ui.el('span', 'text-xs font-semibold truncate', p.nombre));
-        chip.appendChild(ui.el('span', 'l-chip-pos', leaderPos(p)));
-        playersChips.appendChild(chip);
+      App.gamekit.renderChips(playersChips, state.players, {
+        activeId: act.id, extra: (p) => leaderPos(p)
       });
     }
     function renderSkills() {
       const pr = App.storage.getById('players', state.players[state.turn].id);
       if (!pr) { skillsEl.innerHTML = ''; return; }
       const list = [['pista', '💡', 'Pista'], ['comodin', '🃏', 'Comodín'], ['impulso', '🚀', 'Impulso']];
-      skillsEl.innerHTML = '';
-      list.forEach(([sk, ic, nm]) => {
-        const n = (pr.skills || {})[sk] || 0;
-        const btn = ui.el('button', 'skill-btn' + (n === 0 ? ' skill-btn-empty' : ''), ic + ' ' + nm + ' ×' + n);
-        if (n > 0) btn.addEventListener('click', () => {
-          App.progression.useSkill(pr, sk);
-          if (sk === 'pista') state.pendingHint = true;
-          if (sk === 'comodin') state.pendingComodin = true;
-          if (sk === 'impulso') state.extra += 2;
-          ui.sound('dice');
-          renderSkills();
-        });
-        skillsEl.appendChild(btn);
-      });
+      App.gamekit.renderSkills(skillsEl, list.map(([sk, ic, nm]) => ({
+        key: sk, icono: ic, nombre: nm, amount: (pr.skills || {})[sk] || 0,
+        on: sk === 'impulso' && state.extra > 0,
+        label: sk === 'impulso' && state.extra > 0 ? ' (activo)' : ''
+      })), (sk) => {
+        App.progression.useSkill(pr, sk);
+        if (sk === 'pista') state.pendingHint = true;
+        if (sk === 'comodin') state.pendingComodin = true;
+        if (sk === 'impulso') state.extra += 2;
+        ui.sound('dice');
+        renderSkills();
+      }, state.ended);
     }
     function setTurnUI() {
       const p = state.players[state.turn];
@@ -382,11 +375,7 @@ if (owner !== -1 && owner < state.players.length) {
     }
 
     function bonusOf(winner) {
-      const aw = App.progression.awardWin(profileOf(winner), MODE);
-      return ui.bonusParagraph([{
-        nombre: winner.nombre, xp: aw.bonuses.xp, monedas: aw.bonuses.monedas,
-        logros: (aw.achievements || []).map((a) => a.icono + ' ' + a.titulo)
-      }]);
+      return App.gamekit.bonusForPlayer(winner, profileOf, MODE);
     }
 
     function endGame(winnerIdx) {
@@ -403,10 +392,7 @@ if (owner !== -1 && owner < state.players.length) {
     }
 
     function startTimer() {
-      const wrap = ui.el('div', 'mb-3', '');
-      wrap.innerHTML = '<div class="tb"><div class="tb-fill"></div><span class="tb-label">00:00</span></div>';
-      root.insertBefore(wrap, frame);
-      const t = ui.timerBar(wrap, config.timeSeconds, () => {
+      App.gamekit.timerBox(root, config.timeSeconds, () => {
         if (state.ended) return;
         state.ended = true;
         const st = standings();
@@ -416,8 +402,7 @@ if (owner !== -1 && owner < state.players.length) {
         ui.sound('win');
         ui.toast('⏱️ Tiempo agotado. ' + win.nombre + ' lidera la clasificación.', 'success');
         podiumFrom(st, '⏱️ Tiempo agotado — clasificación final', bonus);
-      });
-      t.start();
+      }, frame);
     }
 
     startTimer();
