@@ -30,9 +30,23 @@ App.auth = (function () {
     return { ok: true, user: u };
   }
 
+  /* Login seguro: valida en Supabase (contraseña hasheada, nunca en claro).
+   * Si el server de la API no responde, cae a la demo local (modo offline). */
+  function loginSecuro(usuario, clave) {
+    if (!(App.api && App.api.login)) return Promise.resolve(login(usuario, clave));
+    return App.api.login(usuario, clave).then((r) => {
+      if (!r) { ui.toast('⚠️ Sin conexión a la BD: modo offline local', 'warn'); return login(usuario, clave); }
+      if (!r.ok) return { ok: false, reason: r.reason || 'Credenciales rechazadas por la BD.' };
+      App.api.setToken(r.token);
+      const local = login(usuario, clave);
+      return local.ok ? local : { ok: true, user: r.user };
+    });
+  }
+
   function logout() {
     App.storage.setKey('currentUser', null);
     App.storage.setKey('currentSession', null);
+    if (App.api) App.api.setToken(null);
   }
 
   function isDocente() {
@@ -40,7 +54,7 @@ App.auth = (function () {
     return !!u && u.rol === 'docente';
   }
 
-  return { who, currentPlayer, login, logout, isDocente };
+  return { who, currentPlayer, login, loginSecuro, logout, isDocente };
 })();
 
 /* ------------------------- salas (lobby) ------------------------- */

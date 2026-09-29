@@ -78,18 +78,21 @@ create table players (
   updated_at   timestamptz not null default now()
 );
 
--- Usuarios de la app (nombre de usuario + rol). La clave NO vive aquí:
--- la autenticación es 100% de Supabase (auth.users / auth.uid()).
+-- Usuarios de la app (nombre de usuario + rol). La clave se guarda SIEMPRE
+-- hasheada (scrypt) en clave_hash con su salt en clave_salt; nunca en claro.
+-- La autenticación también puede delegarse a Supabase Auth (auth.users).
 -- app_users.usuario conserva el login legible y player_id une a la ficha.
 create table app_users (
-  id         uuid primary key default gen_random_uuid(),
-  user_id    uuid unique references auth.users(id) on delete cascade,
-  player_id  uuid unique references players(id) on delete set null,
-  nombre     text not null,
-  usuario    text not null unique,
-  rol        text not null default 'estudiante' check (rol in ('docente', 'estudiante')),
-  created_at timestamptz not null default now(),
-  updated_at timestamptz not null default now()
+  id          uuid primary key default gen_random_uuid(),
+  user_id     uuid unique references auth.users(id) on delete cascade,
+  player_id   uuid unique references players(id) on delete set null,
+  nombre      text not null,
+  usuario     text not null unique,
+  clave_hash  text,
+  clave_salt  text,
+  rol         text not null default 'estudiante' check (rol in ('docente', 'estudiante')),
+  created_at  timestamptz not null default now(),
+  updated_at  timestamptz not null default now()
 );
 
 -- Sesión de juego creada por el docente con un código para la sala.

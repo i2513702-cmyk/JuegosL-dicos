@@ -1,0 +1,14 @@
+{
+  "name": "ludoapp-supabase",
+  "version": "1.0.0",
+  "private": true,
+  "description": "LudoApp · Ludoteca de Preguntas · integración Supabase",
+  "scripts": {
+    "api": "node api/server.js",
+    "seed": "node scripts/seed_db.js",
+    "start": "node api/server.js"
+  },
+  "dependencies": {
+    "pg": "^8.23.0"
+  }
+}

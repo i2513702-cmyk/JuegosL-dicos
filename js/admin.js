@@ -112,11 +112,42 @@
 
     const nueva = ui.el('button', 'btn-primary', '➕ Nueva pregunta');
     nueva.addEventListener('click', () => formPregunta(null));
-    filtros.append(sCurso, sCat, sDif, nueva);
+    const subir = ui.el('button', 'btn-ghost text-xs', '☁️ Subir todo a la BD');
+    subir.addEventListener('click', () => syncAll(false));
+    const traer = ui.el('button', 'btn-ghost text-xs', '🌐 Traer de la BD');
+    traer.addEventListener('click', pullDb);
+    filtros.append(sCurso, sCat, sDif, nueva, subir, traer);
     body.appendChild(filtros);
 
     const list = ui.el('div', 'flex flex-col gap-2', '');
     body.appendChild(list);
+
+    /* Sincroniza el banco local de preguntas hacia Supabase (upsert por id). */
+    function syncAll(quiet) {
+      if (!(App.api && App.api.token())) {
+        if (!quiet) ui.toast('Inicia sesión con la API activa (server corriendo) para subir a la BD', 'warn');
+        return;
+      }
+      const listQ = App.storage.all('questions');
+      if (!listQ.length) { if (!quiet) ui.toast('No hay preguntas locales para subir', 'warn'); return; }
+      App.api.importQuestions(listQ).then((r) => {
+        if (!r) return ui.toast('⚠️ API no disponible (¿corre "node api/server.js"?).', 'warn');
+        if (!r.ok) return ui.toast('Error al subir: ' + (r.error || r.reason || ''), 'error');
+        ui.toast('☁️ Subidas ' + (r.inserted || listQ.length) + ' preguntas a la BD de Supabase', 'success');
+      });
+    }
+
+    /* Trae las preguntas desde Supabase y las guarda en el banco local. */
+    function pullDb() {
+      if (!(App.api && App.api.token())) return ui.toast('Inicia sesión con la API activa (server corriendo) para traer de la BD', 'warn');
+      App.api.listQuestions().then((r) => {
+        if (!r) return ui.toast('⚠️ API no disponible (¿corre "node api/server.js"?).', 'warn');
+        if (!r.ok) return ui.toast('Error: ' + (r.error || r.reason || ''), 'error');
+        localStorage.setItem('ludoApp:questions', JSON.stringify(r.data));
+        ui.toast('🌐 BD sincronizada: ' + r.count + ' preguntas en local', 'success');
+        paint();
+      });
+    }
 
     function paint() {
       let qs = App.storage.getQuestions();
@@ -146,7 +177,12 @@
         const ed = ui.el('button', 'btn-ghost text-xs', '✏️ Editar');
         ed.addEventListener('click', () => formPregunta(q));
         const del = ui.el('button', 'btn-ghost btn-danger text-xs', '🗑️');
-        del.addEventListener('click', () => confirmBox('¿Eliminar esta pregunta?', () => { App.storage.endpoint('DELETE', '/questions/' + q.id); ui.toast('Pregunta eliminada', 'success'); paint(); }));
+        del.addEventListener('click', () => confirmBox('¿Eliminar esta pregunta?', () => {
+          App.storage.endpoint('DELETE', '/questions/' + q.id);
+          if (App.api && App.api.token()) App.api.deleteQuestion(q.id);
+          ui.toast('Pregunta eliminada', 'success');
+          paint();
+        }));
         btns.append(ed, del);
         row.appendChild(btns);
         list.appendChild(row);
@@ -219,6 +255,7 @@
         ui.toast('✅ Pregunta guardada', 'success');
         m.ov.remove();
         paint();
+        syncAll(true);
         sCurso.dispatchEvent(new Event('change'));
       });
       form.appendChild(save);

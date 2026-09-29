@@ -433,10 +433,13 @@ App.roam = (function () {
 
     const doLogin = ui.el('button', 'btn-primary w-full mt-3', '🔑 Ingresar');
     doLogin.addEventListener('click', () => {
-      const r = App.auth.login(selUsr.value, iKey.value);
-      if (!r.ok) return ui.toast('⚠️ ' + r.reason, 'error');
-      ui.toast('👋 Hola, ' + (r.user.nombre || r.user.usuario), 'success');
-      location.hash = '#/inicio';
+      doLogin.disabled = true;
+      App.auth.loginSecuro(selUsr.value, iKey.value).then((r) => {
+        doLogin.disabled = false;
+        if (!r.ok) return ui.toast('⚠️ ' + r.reason, 'error');
+        ui.toast('👋 Hola, ' + (r.user.nombre || r.user.usuario), 'success');
+        location.hash = '#/inicio';
+      });
     });
     card.appendChild(doLogin);
 
@@ -446,9 +449,10 @@ App.roam = (function () {
       const q = ui.el('button', 'btn-ghost text-xs',
         (u.rol === 'docente' ? '👩‍🏫 ' : '🧑‍🎓 ') + (u.nombre || u.usuario));
       q.addEventListener('click', () => {
-        App.auth.login(u.usuario, '1234');
-        ui.toast('👋 Hola, ' + (u.nombre || u.usuario), 'success');
-        location.hash = '#/inicio';
+        App.auth.loginSecuro(u.usuario, '1234').then(() => {
+          ui.toast('👋 Hola, ' + (u.nombre || u.usuario), 'success');
+          location.hash = '#/inicio';
+        });
       });
       quick.appendChild(q);
     });
