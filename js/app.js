@@ -585,10 +585,35 @@ App.launchGame = function (opts) {
   const game = App.games[opts.mode];
   if (!game || !game.init) { container.appendChild(ui.el('p', 'text-sm', 'Modo no implementado.')); return; }
   const ESCENARIOS = {
-    batalla: 'campo-de-batalla.svg',
-    carrera: 'pista-de-carreras.svg',
-    conquista: 'terreno-de-conquista.svg'
+    ludo: { file: 'tablero-ludo.svg', w: 384, h: 384 },
+    batalla: { file: 'campo-de-batalla.svg', w: 680, h: 380 },
+    carrera: { file: 'pista-de-carreras.svg', w: 680, h: 380 },
+    conquista: { file: 'terreno-de-conquista.svg', w: 680, h: 380 }
   };
+
+  /* ESCENA: la imagen estatica ES el tablero (con su formato exacto) y el juego
+     se dibuja DENTRO de ella (config.escenaCapa), no encima como tarjetas sueltas.
+     El area de preguntas, marcador y habilidades queda fuera, abajo. */
+  let escena = null;
+  const escDef = ESCENARIOS[opts.mode];
+  if (escDef) {
+    escena = ui.el('div', 'escena', '');
+    escena.style.aspectRatio = escDef.w + ' / ' + escDef.h;
+    if (escDef.w === escDef.h) escena.classList.add('escena-cuadrada');
+    const bg = document.createElement('img');
+    bg.className = 'escenario-capa';
+    bg.src = 'escenarios-estaticos/' + escDef.file;
+    bg.alt = '';
+    bg.setAttribute('aria-hidden', 'true');
+    bg.width = escDef.w; bg.height = escDef.h;
+    bg.decoding = 'async';
+    escena.appendChild(bg);
+    const capa = ui.el('div', 'escena-capa', '');
+    escena.appendChild(capa);
+    config.escena = escena;
+    config.escenaCapa = capa;
+    config.escenaSize = { w: escDef.w, h: escDef.h };
+  }
 
   /* toolbar de salida */
   const top = ui.el('div', 'flex items-center justify-between mb-4', '');
@@ -609,23 +634,13 @@ App.launchGame = function (opts) {
     return;
   }
 
-  /* escenario estático como capa de fondo real del modo (680x380, sin deformar).
-   * Se inserta DESPUÉS de init (los juegos vacían su contenedor) y queda detrás
-   * de todo con z-index:-1 + isolation: no tapa sprites ni HUD, y al ser
-   * object-fit:contain se adapta igual a celular. */
-  if (ESCENARIOS[opts.mode]) {
+  /* la escena se coloca despues de init (los juegos vacian su contenedor),
+     justo debajo de la barra de salida */
+  if (escena) {
     container.style.position = 'relative';
-    container.style.isolation = 'isolate';
-    const bg = document.createElement('img');
-    bg.className = 'escenario-capa';
-    bg.src = 'escenarios-estaticos/' + ESCENARIOS[opts.mode];
-    bg.alt = '';
-    bg.setAttribute('aria-hidden', 'true');
-    bg.width = 680; bg.height = 380;
-    bg.decoding = 'async';
-    container.appendChild(bg);
-    container.insertBefore(bg, container.firstChild);
-    container.classList.add('con-escenario');
+    const toolbar = container.firstElementChild;
+    if (toolbar && toolbar.nextSibling) container.insertBefore(escena, toolbar.nextSibling);
+    else container.appendChild(escena);
   }
   App.roam.navBtn('inicio');
 };

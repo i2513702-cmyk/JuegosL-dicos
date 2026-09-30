@@ -297,6 +297,14 @@
     var STARTERS = ['Lanzar', 'Tirar', 'Comenzar', 'Iniciar', 'Jugar', 'Empezar', '▶', '🎲', 'Continuar', 'Siguiente', 'Atacar', 'Avanzar', 'Responder', 'Jabalina', 'Movimiento', 'Turno', 'Acción'];
     var ZONE_SEL = '.cq-zone, .zone, .cell, .tile, .casilla, .slot, .square, .sq';
     var zoneCursor = 0;
+    function $$movers(root, sel) {
+      return Array.prototype.slice.call(root.querySelectorAll(sel));
+    }
+    function ownedCount(root) {
+      return $$('.cq-zone', root).filter(function (z) {
+        return !z.classList.contains('cq-neutral') && !!z.querySelector('canvas');
+      }).length;
+    }
     function clickStarter(root) {
       var b = $$('button', root).find(function (btn2) {
         var t = (btn2.textContent || '').trim();
@@ -315,7 +323,9 @@
       try {
         var host = document.createElement('div');
         host.className = 'game-host';
-        document.getElementById('gamehost').appendChild(host);
+        var gh = document.getElementById('gamehost');
+        gh.innerHTML = '';           /* una partida a la vez: sin escenas viejas */
+        gh.appendChild(host);
         App.launchGame({
           container: host,
           mode: mode,
@@ -329,41 +339,119 @@
         var childs = host.children.length > 0;
         step(childs, 'juego ' + mode + ': init renderiza (' + host.children.length + ' nodos)');
 
-        /* ---- escenario estático de fondo (solo los 3 modos que lo tienen) ---- */
-        var ESC = { batalla: 'campo-de-batalla.svg', carrera: 'pista-de-carreras.svg', conquista: 'terreno-de-conquista.svg' };
+        /* ---- la imagen estatica ES el tablero y el juego vive DENTRO ---- */
+        var ESC = {
+          ludo: { file: 'tablero-ludo.svg', w: 384, h: 384 },
+          batalla: { file: 'campo-de-batalla.svg', w: 680, h: 380 },
+          carrera: { file: 'pista-de-carreras.svg', w: 680, h: 380 },
+          conquista: { file: 'terreno-de-conquista.svg', w: 680, h: 380 }
+        };
         var bg = host.querySelector('img.escenario-capa');
         if (ESC[mode]) {
-          step(!!bg, 'juego ' + mode + ': escenario ' + ESC[mode] + ' insertado');
+          var def = ESC[mode];
+          step(!!bg, 'juego ' + mode + ': escenario ' + def.file + ' insertado');
           if (bg) {
-            var loaded = bg.complete && bg.naturalWidth === 680 && bg.naturalHeight === 380;
-            step(loaded, 'juego ' + mode + ': SVG cargado 680x380 (natural ' + bg.naturalWidth + 'x' + bg.naturalHeight + ')');
-            /* realmente visible: no puede quedar tapado por el juego */
-            var r = bg.getBoundingClientRect();
-            step(r.width > 50 && r.height > 20, 'juego ' + mode + ': escenario visible (' + Math.round(r.width) + 'x' + Math.round(r.height) + ' px)');
-            var cs = getComputedStyle(bg);
-            step(cs.objectFit === 'contain', 'juego ' + mode + ': object-fit contain (no deforma)');
-            step(parseInt(cs.zIndex, 10) < 0, 'juego ' + mode + ': escenario detras del HUD (z-index ' + cs.zIndex + ')');
-            /* no puede tapar el juego: es el primer hijo y el contenido va después
-               (con z-index negativo queda detrás de todo lo demás) */
-            var first = host.firstElementChild;
-            var after = Array.prototype.slice.call(host.children).filter(function (el) {
-              return el !== bg && el.getBoundingClientRect().height > 0;
-            });
-            step(first === bg && after.length > 0,
-              'juego ' + mode + ': escenario al fondo, con ' + after.length + ' elemento(s) de juego por encima');
-            /* prueba de visibilidad: las superficies del juego deben ser
-               translúcidas, si no taparían el escenario */
-            var surfaces = Array.prototype.slice.call(host.querySelectorAll('*')).filter(function (el) {
-              var s = getComputedStyle(el);
-              var bg = s.backgroundColor || '', bi = s.backgroundImage || '';
-              var translucent = (/rgba\([^)]*0?\.\d+\)/.test(bg) && bg !== 'transparent') || /rgba\(/.test(bi);
-              return translucent && el.getBoundingClientRect().height > 4;
-            });
-            step(surfaces.length >= 2,
-              'juego ' + mode + ': ' + surfaces.length + ' superficie(s) translúcidas (el escenario se ve)');
+            var loaded = bg.complete && bg.naturalWidth === def.w && bg.naturalHeight === def.h;
+            step(loaded, 'juego ' + mode + ': SVG cargado ' + def.w + 'x' + def.h + ' (natural ' + bg.naturalWidth + 'x' + bg.naturalHeight + ')');
+            var escena = host.querySelector('.escena');
+            step(!!escena, 'juego ' + mode + ': caja de escena .escena creada');
+            if (escena) {
+              var er = escena.getBoundingClientRect();
+              var br = bg.getBoundingClientRect();
+              step(er.width > 50 && er.height > 20, 'juego ' + mode + ': escena visible (' + Math.round(er.width) + 'x' + Math.round(er.height) + ' px)');
+              /* la caja debe conservar el formato del SVG: si no, la imagen se deformaria */
+              var ratio = er.width / er.height, want = def.w / def.h;
+              step(Math.abs(ratio - want) < 0.05, 'juego ' + mode + ': escena con formato 680x380 (ratio ' + ratio.toFixed(3) + ')');
+              /* la imagen ocupa exactamente la escena (object-fit dentro de la caja exacta) */
+              step(Math.abs(br.width - er.width) < 2 && Math.abs(br.height - er.height) < 2 && Math.abs(br.left - er.left) < 2,
+                'juego ' + mode + ': la imagen cubre la escena entera sin deformarse');
+              var capa = escena.querySelector('.escena-capa');
+              step(!!capa, 'juego ' + mode + ': capa de juego .escena-capa dentro de la escena');
+
+              /* el tablero del modo se dibuja DENTRO de la imagen */
+              var board = { ludo: '.l-board-frame', conquista: '.cq-map', batalla: '.ba-arena', carrera: '.track-wrap' }[mode];
+              var bEl = host.querySelector(board);
+              step(!!bEl && capa && capa.contains(bEl), 'juego ' + mode + ': ' + board + ' vive dentro de la imagen');
+
+              /* los avatares/fichas estan dentro del rectangulo de SU escena */
+              var actors = Array.prototype.slice.call(host.querySelectorAll('.cq-zone, .ba-canvas, .tr-token, .l-token'));
+              var out = actors.filter(function (el) {
+                var a = el.getBoundingClientRect();
+                if (a.width < 1 || a.height < 1) return false;          /* oculto: no cuenta */
+                var own = el.closest ? el.closest('.escena') : escena;
+                if (!own) return true;
+                var b = own.getBoundingClientRect();
+                return a.top < b.top - 2 || a.bottom > b.bottom + 2 ||
+                       a.left < b.left - 2 || a.right > b.right + 2;
+              });
+              var visible = actors.filter(function (el) {
+                var a = el.getBoundingClientRect();
+                return a.width >= 1 && a.height >= 1;
+              });
+              var firstOut = out[0];
+              var det = firstOut
+                ? ' (p.ej. ' + firstOut.className + ' ' + Math.round(firstOut.getBoundingClientRect().left) + ',' +
+                  Math.round(firstOut.getBoundingClientRect().top) + ' ' +
+                  Math.round(firstOut.getBoundingClientRect().width) + 'x' +
+                  Math.round(firstOut.getBoundingClientRect().height) + ')'
+                : '';
+              step(visible.length > 0 && out.length === 0,
+                'juego ' + mode + ': ' + (visible.length - out.length) + '/' + visible.length + ' avatar(es) dentro de la escena' + det);
+
+              /* nadie puede tapar la escena con una superficie opaca grande */
+              var capers = Array.prototype.slice.call(escena.querySelectorAll('*')).filter(function (el) {
+                var a = el.getBoundingClientRect();
+                return a.width * a.height > er.width * er.height * 0.55;
+              });
+              var tapers = capers.filter(function (el) {
+                if (el === bg || el.classList.contains('escena-capa')) return false;
+                var s = getComputedStyle(el), c = s.backgroundColor || '';
+                var m = c.match(/rgba?\(([^)]+)\)/);
+                if (!m) return false;
+                var p = m[1].split(',').map(function (x) { return parseFloat(x); });
+                return (p.length < 4 || p[3] > 0.55) && !/gradient/.test(s.backgroundImage);
+              });
+              step(tapers.length === 0, 'juego ' + mode + ': nada opaco tapa la escena (' + tapers.length + ' tapando)');
+
+              /* la zona de preguntas/marcador queda FUERA de la escena, abajo */
+              var qOut = host.querySelector('.q-card, .hud, .fin-row');
+              step(!qOut || !escena.contains(qOut), 'juego ' + mode + ': HUD y preguntas fuera de la escena (no la tapan)');
+            }
           }
         } else {
-          step(!bg, 'juego ' + mode + ': sin escenario (correcto: no hay SVG para Ludo)');
+          step(!bg, 'juego ' + mode + ': sin escenario');
+        }
+
+        /* ---- las piezas se MUEVEN de verdad al jugar ---- */
+        if (mode === 'ludo' || mode === 'carrera') {
+          var movers = mode === 'ludo' ? '.l-token' : '.tr-token';
+          var before = $$movers(host, movers);
+          for (var mv = 0; mv < 8; mv++) {
+            var okMv = clickStarter(host);
+            if (!okMv) { var o2 = $$('.opt-btn', host); if (o2.length) { o2[0].click(); okMv = true; } }
+            if (!okMv) break;
+            await wait(240);
+          }
+          await wait(600);
+          var after = $$movers(host, movers);
+          var moved = 0;
+          for (var mi = 0; mi < Math.min(before.length, after.length); mi++) {
+            if (Math.abs(after[mi].getBoundingClientRect().left - before[mi].getBoundingClientRect().left) > 1 ||
+                Math.abs(after[mi].getBoundingClientRect().top - before[mi].getBoundingClientRect().top) > 1) moved++;
+          }
+          step(before.length > 0 && moved > 0,
+            'juego ' + mode + ': ' + moved + '/' + before.length + ' ficha(s) avanzaron al jugar');
+        }
+        if (mode === 'conquista') {
+          var own0 = ownedCount(host);
+          for (var cv = 0; cv < 4; cv++) {
+            var zs = $$('.cq-zone', host);
+            if (!zs.length) break;
+            zs[Math.floor(Math.random() * zs.length)].click();
+            await wait(300);
+          }
+          var own1 = ownedCount(host);
+          step(own1 > 0, 'juego conquista: los avatares conquistan territorio (' + own0 + ' -> ' + own1 + ' parcelas con dueño)');
         }
 
         /* ---- responsive: sin scroll horizontal a 375px ---- */

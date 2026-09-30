@@ -41,12 +41,15 @@ App.games.batalla = (function (ui) {
     root.appendChild(ui.el('div', 'ba-title text-center text-xl font-extrabold text-slate-900 mb-2', '⚔️ Batalla de Preguntas'));
 
     /* arena con los avatares de cada equipo */
-    const arena = ui.el('div', 'ba-arena', '');
+    /* En modo escena, los peleadores se paran sobre las plataformas que ya
+       dibuja campo-de-batalla.svg (suelo en y~215, 左右 en x=45 y x=475). */
+    const inScene = !!config.escenaCapa;
+    const arena = ui.el('div', 'ba-arena' + (inScene ? ' ba-en-escena' : ''), '');
     arena.innerHTML =
       '<div class="ba-fighter"><canvas id="ba-canvas-a" class="avatar-canvas ba-canvas"></canvas><div class="ba-pose" id="ba-pose-a"></div></div>' +
       '<div class="ba-vs">⚔️<br>VS</div>' +
       '<div class="ba-fighter"><canvas id="ba-canvas-b" class="avatar-canvas ba-canvas"></canvas><div class="ba-pose" id="ba-pose-b"></div></div>';
-    root.appendChild(arena);
+    if (inScene) config.escenaCapa.appendChild(arena); else root.appendChild(arena);
 
     /* ---- motor de animación de los avatares (30 fps) ----
      * Cada pose animada de verdad: respiración en reposo (idle),
