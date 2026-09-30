@@ -20,6 +20,33 @@ const PROFILE = path.join(os.tmpdir(), 'ludo-audit-profile-' + Date.now());
 
 function delay(ms) { return new Promise((r) => setTimeout(r, ms)); }
 
+let pageNo = 0;
+function runPage(url, budget) {
+  const prof = PROFILE + '-' + (++pageNo);
+  try {
+    return execFileSync(EDGE, [
+      '--headless=new', '--disable-gpu', '--no-first-run', '--disable-extensions',
+      '--user-data-dir=' + prof,
+      '--virtual-time-budget=' + budget, '--dump-dom', url
+    ], { encoding: 'utf8', timeout: 120000, maxBuffer: 60 * 1024 * 1024 });
+  } catch (e) {
+    return (e.stdout || '').toString();
+  } finally {
+    try { fs.rmSync(prof, { recursive: true, force: true }); } catch (_) {}
+  }
+}
+
+function parseAudit(dom) {
+  const m = String(dom).match(/<pre id="audit-out">([\s\S]*?)<\/pre>/);
+  if (!m) {
+    console.error('No se encontró el bloque de resultado (¿la página no terminó?).');
+    return null;
+  }
+  const b64 = m[1].replace(/^<[^>]+>|<\/pre>$/g, '').trim();
+  try { return JSON.parse(Buffer.from(b64, 'base64').toString('utf8')); }
+  catch (e) { console.error('No se pudo decodificar el resultado: ' + e.message); return null; }
+}
+
 (async () => {
   const server = spawn(process.execPath, ['servidor.js'], {
     cwd: ROOT,
@@ -35,29 +62,18 @@ function delay(ms) { return new Promise((r) => setTimeout(r, ms)); }
   if (!up) { console.error('No arrancó servidor'); process.exit(2); }
 
   const url = BASE + '/tests/audit_full.html';
-  let dom = '';
-  try {
-    dom = execFileSync(EDGE, [
-      '--headless=new', '--disable-gpu', '--no-first-run', '--disable-extensions',
-      '--user-data-dir=' + PROFILE,
-      '--virtual-time-budget=25000', '--dump-dom', url
-    ], { encoding: 'utf8', timeout: 90000, maxBuffer: 60 * 1024 * 1024 });
-  } catch (e) {
-    dom = (e.stdout || '').toString();
-  }
+  const dom = runPage(url, 25000);
+  const res = parseAudit(dom);
+  if (!res) process.exit(2);
+
+  /* fase 2: index.html real (orden de scripts, arranque y login) */
+  const dom2 = runPage(BASE + '/tests/audit_index.html', 18000);
+  const res2 = parseAudit(dom2);
+  if (res2) { res.steps = res.steps.concat(res2.steps); res.errors = (res.errors || []).concat(res2.errors || []); }
 
   try { server.kill('SIGKILL'); } catch (_) {}
   try { fs.unlinkSync(DATA_FILE); } catch (_) {}
-
-  const m = dom.match(/<pre id="audit-out">([\s\S]*?)<\/pre>/);
-  if (!m) {
-    console.error('No se encontró el bloque de resultado (¿la página no terminó?).');
-    process.exit(2);
-  }
-  const b64 = m[1].replace(/^<[^>]+>|<\/pre>$/g, '').trim();
-  let res;
-  try { res = JSON.parse(Buffer.from(b64, 'base64').toString('utf8')); }
-  catch (e) { console.error('No se pudo decodificar el resultado: ' + e.message); process.exit(2); }
+  try { fs.rmSync(PROFILE, { recursive: true, force: true }); } catch (_) {}
 
   let pass = 0, fail = 0;
   console.log('');
@@ -77,8 +93,6 @@ function delay(ms) { return new Promise((r) => setTimeout(r, ms)); }
     console.log('WARNINGS:');
     res.warnings.forEach((e) => console.log('  ! (' + e.n + 'x) ' + e.text));
   }
-
-  try { fs.rmSync(PROFILE, { recursive: true, force: true }); } catch (_) {}
 
   console.log('');
   console.log('AUDITORÍA: ' + pass + ' OK, ' + fail + ' FAIL, ' + (res.errors ? res.errors.length : 0) + ' error(es) JS');

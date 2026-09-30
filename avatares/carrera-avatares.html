@@ -11,7 +11,10 @@
   h1 { font-size:16px; font-weight:600; margin:0 0 4px; }
   p.hint { color:var(--text-dim); font-size:12px; margin:0 0 16px; max-width:600px; }
   .panel { background:var(--panel); border-radius:10px; padding:16px; max-width:700px; margin:0 auto; }
-  canvas#track { image-rendering:pixelated; background:#2f2f3a; border-radius:8px; width:100%; max-width:660px; display:block; margin:0 auto; }
+  /* escenario SVG 680:380 como fondo real de la pista, sin deformar */
+  .stage { position:relative; width:100%; max-width:680px; margin:0 auto; aspect-ratio:680/380; background:#2f2f3a; border-radius:8px; overflow:hidden; }
+  .stage .escenario { position:absolute; inset:0; width:100%; height:100%; object-fit:contain; z-index:0; }
+  canvas#track { position:relative; z-index:1; image-rendering:pixelated; background:transparent; display:block; width:100%; height:100%; }
   .ranking { display:flex; flex-wrap:wrap; gap:8px; margin-top:12px; font-size:12px; }
   .rank-item { background:#1f1f28; border-radius:6px; padding:6px 10px; color:var(--text-dim); }
   .rank-item.first { color:#4caf6b; font-weight:600; }
@@ -26,32 +29,20 @@
 <p class="hint">Cada carrito avanza con velocidad aleatoria en cada instante; el primero en cruzar la meta gana la carrera.</p>
 
 <div class="panel">
-  <canvas id="track" width="660" height="260"></canvas>
-  <div class="ranking" id="ranking"></div>
-  <div class="champion" id="champion"></div>
+  <div class="stage">
+    <img class="escenario" src="../escenarios-estaticos/pista-de-carreras.svg" width="680" height="380" alt="Pista de carreras con cinco carriles y linea de meta a cuadros">
+    <canvas id="track" width="680" height="380">Pista de carreras: los cinco pilotos avanzan hacia la meta.</canvas>
+  </div>
+  <div class="ranking" id="ranking" aria-live="polite"></div>
+  <div class="champion" id="champion" role="status" aria-live="polite"></div>
   <button id="restartBtn" disabled>Reiniciar carrera</button>
 </div>
 
+<script src="motor-sprites.js"></script>
 <script>
-const CHARACTERS = [
-  { id:'espadachin', name:'Espadachín',       skin:'#e8b88a', armor:'#3a5a8a', head:'#9a9a9a', boots:'#2a2a2a', weapon:'sword',    weaponColor:'#c0c0c0' },
-  { id:'barbaro',    name:'Bárbaro',          skin:'#d0a070', armor:'#6a5a3a', head:'#5a3a1a', boots:'#3a2a1a', weapon:'axe',       weaponColor:'#9a9a9a' },
-  { id:'caballero',  name:'Caballero',        skin:'#f0c9a0', armor:'#3a5a8a', head:'#c0a020', boots:'#2a2a3a', weapon:'sword',     weaponColor:'#c0c0c0', shield:true, shieldColor:'#c0a020' },
-  { id:'lancero',    name:'Lancero',          skin:'#e8b88a', armor:'#2f6f4a', head:'#2a2a2a', boots:'#1a1a1a', weapon:'spear',     weaponColor:'#8a6a3a' },
-  { id:'sombrio',    name:'Guerrero sombrío', skin:'#d8b090', armor:'#2a2a3a', head:'#141414', boots:'#0e0e0e', weapon:'dualblade', weaponColor:'#8a2f2f' },
-];
-
-function drawAvatarIcon(ctx, ox, oy, ps, c) {
-  const px = (gx,gy,gw,gh,color) => { ctx.fillStyle=color; ctx.fillRect(ox+gx*ps, oy+gy*ps, gw*ps, gh*ps); };
-  px(5,11,3,3,c.boots); px(8,11,3,3,c.boots);
-  px(3,7,10,5,c.armor);
-  px(4,1,8,2,c.head);
-  px(4,3,8,3,c.skin);
-  px(5,4,1,1,'#2a2a2a'); px(10,4,1,1,'#2a2a2a');
-  px(1,7,2,4,c.skin); px(12,7,2,4,c.skin);
-  ctx.fillStyle = c.weaponColor;
-  ctx.fillRect(ox+13*ps, oy+6*ps, ps, ps*6);
-}
+/* ---------- SPRITES: motor compartido (sin copia local) ---------- */
+const CHARACTERS = Motor.CHARACTERS;
+const drawIcon = Motor.drawIcon;
 
 const track = document.getElementById('track');
 const tctx = track.getContext('2d');
@@ -59,29 +50,26 @@ const rankingEl = document.getElementById('ranking');
 const championEl = document.getElementById('champion');
 const restartBtn = document.getElementById('restartBtn');
 
-const TRACK_LENGTH = 560;
-const START_X = 40;
+/* geometria del escenario pista-de-carreras.svg (viewBox 680x380):
+   asfalto de y=190 a 380 con 5 carriles; la meta a cuadros arranca en x=600. */
+const ROAD_TOP = 190, ROAD_BOTTOM = 380, LANES = 5;
+const START_X = 14, FINISH_X = 600;
+const TRACK_LENGTH = FINISH_X - START_X - 14;
 let racers = [];
 let raceOver = false;
 
-function laneY(i) { return 30 + i * 44; }
+function laneY(i) { return ROAD_TOP + i * ((ROAD_BOTTOM - ROAD_TOP) / LANES) + 2; }
 
 function render() {
   tctx.clearRect(0,0,track.width,track.height);
-  // pista y meta
-  for (let i=0;i<CHARACTERS.length;i++) {
-    tctx.strokeStyle = '#3a3a45';
-    tctx.beginPath(); tctx.moveTo(0, laneY(i)+34); tctx.lineTo(track.width, laneY(i)+34); tctx.stroke();
-  }
-  tctx.fillStyle = '#e0c060';
-  tctx.fillRect(START_X + TRACK_LENGTH, 10, 4, track.height-20);
-
+  /* el asfalto, los carriles y la meta los dibuja el SVG de fondo:
+     aqui solo los pilotos, que van por encima (z-index 1). */
   racers.forEach((r, i) => {
     const x = START_X + r.x;
     const y = laneY(i);
     tctx.fillStyle = r.char.armor;
-    tctx.fillRect(x, y+18, 26, 10);
-    drawAvatarIcon(tctx, x-4, y-10, 1.6, r.char);
+    tctx.fillRect(x + 3, y + 24, 26, 8);
+    drawIcon(tctx, x - 2, y - 2, 1.5, r.char);
   });
 }
 

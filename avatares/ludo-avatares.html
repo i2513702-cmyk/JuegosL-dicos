@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="es">
 <head>
 <meta charset="UTF-8">
@@ -44,26 +44,11 @@
   </div>
 </div>
 
+<script src="motor-sprites.js"></script>
 <script>
-const CHARACTERS = [
-  { id:'espadachin', name:'Espadachín',       skin:'#e8b88a', armor:'#3a5a8a', head:'#9a9a9a', boots:'#2a2a2a', weapon:'sword',    weaponColor:'#c0c0c0' },
-  { id:'barbaro',    name:'Bárbaro',          skin:'#d0a070', armor:'#6a5a3a', head:'#5a3a1a', boots:'#3a2a1a', weapon:'axe',       weaponColor:'#9a9a9a' },
-  { id:'caballero',  name:'Caballero',        skin:'#f0c9a0', armor:'#3a5a8a', head:'#c0a020', boots:'#2a2a3a', weapon:'sword',     weaponColor:'#c0c0c0', shield:true, shieldColor:'#c0a020' },
-  { id:'lancero',    name:'Lancero',          skin:'#e8b88a', armor:'#2f6f4a', head:'#2a2a2a', boots:'#1a1a1a', weapon:'spear',     weaponColor:'#8a6a3a' },
-  { id:'sombrio',    name:'Guerrero sombrío', skin:'#d8b090', armor:'#2a2a3a', head:'#141414', boots:'#0e0e0e', weapon:'dualblade', weaponColor:'#8a2f2f' },
-];
-
-function drawAvatarIcon(ctx, ox, oy, ps, c) {
-  const px = (gx,gy,gw,gh,color) => { ctx.fillStyle=color; ctx.fillRect(ox+gx*ps, oy+gy*ps, gw*ps, gh*ps); };
-  px(5,11,3,3,c.boots); px(8,11,3,3,c.boots);
-  px(3,7,10,5,c.armor);
-  px(4,1,8,2,c.head);
-  px(4,3,8,3,c.skin);
-  px(5,4,1,1,'#2a2a2a'); px(10,4,1,1,'#2a2a2a');
-  px(1,7,2,4,c.skin); px(12,7,2,4,c.skin);
-  ctx.fillStyle = c.weaponColor;
-  ctx.fillRect(ox+13*ps, oy+6*ps, ps, ps*6);
-}
+/* ---------- SPRITES: motor compartido (sin copia local) ---------- */
+const CHARACTERS = Motor.CHARACTERS;
+const drawAvatarIcon = Motor.drawIcon;
 
 // ---------- tablero: camino perimetral 9x9 ----------
 const N = 9, CELL = 38, OFFSET = 20;

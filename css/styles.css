@@ -441,9 +441,9 @@ select.ffield, select { cursor: pointer; }
 .track-cells { display: grid; grid-template-columns: repeat(6, 1fr); gap: 2px; }
 .tr-cell {
   height: 42px; display: flex; align-items: center; justify-content: center;
-  background: #eef2ff; border-radius: 8px; font-size: .72rem; font-weight: 700; color: #4338ca;
+  background: rgba(238,242,255,.75); border-radius: 8px; font-size: .72rem; font-weight: 700; color: #4338ca;
 }
-.tr-cell-obs { background: #fecaca; color: #9f1239; }
+.tr-cell-obs { background: rgba(254,202,202,.78); color: #9f1239; }
 .tr-meta { display: flex; align-items: center; justify-content: center; font-size: 1.2rem; }
 .track-tokens { position: absolute; left: 0; right: 0; top: 0; height: 112px; pointer-events: none; }
 .tr-token {
@@ -459,16 +459,42 @@ select.ffield, select { cursor: pointer; }
 .fin-title { text-align: center; font-size: 1.3rem; font-weight: 800; margin: 14px 0 4px; }
 
 /* ------------------------------- CONQUISTA ------------------------------- */
+/* escenario estático 680x380 detrás del modo (nunca deforma, nunca tapa el HUD).
+   inset:0 sin width/height 100%: así se estira aunque el contenedor tenga alto automático. */
+.escenario-capa {
+  position: absolute; inset: 0; width: auto; height: auto;
+  object-fit: contain; object-position: center top; z-index: -1;
+  pointer-events: none; border-radius: 14px;
+}
 .cq-map { display: grid; grid-template-columns: repeat(var(--cq-cols, 6), 1fr); gap: 6px; margin: 10px auto 0; max-width: 620px; }
 .cq-zone {
   aspect-ratio: 6/4; border: none; border-radius: 8px; cursor: pointer;
   display: flex; align-items: center; justify-content: center; gap: 4px; flex-direction: column;
   font-size: .8rem; transition: transform .15s, box-shadow .15s;
+  /* translúcidos para que se vea el terreno del escenario detrás */
+  background: rgba(226,232,240,.72); backdrop-filter: blur(1px);
 }
 .cq-zone:hover { transform: scale(1.05); box-shadow: 0 4px 10px rgba(15,23,42,.2); }
-.cq-neutral { background: #e2e8f0; color: #475569; }
+.cq-neutral { background: rgba(226,232,240,.55); color: #475569; }
 .cq-target { box-shadow: 0 0 0 3px #f59e0b, 0 4px 10px rgba(15,23,42,.2); transform: scale(1.06); }
 .cq-flag { font-size: .9rem; }
+
+/* ---------------- MOVIL: escenario y area de juego ---------------- */
+@media (max-width: 640px) {
+  /* el escenario se mantiene en 680:380 y se reduce sin deformar */
+  .escenario-capa { object-fit: contain; }
+  .cq-map { max-width: 100%; gap: 4px; }
+  .cq-zone { font-size: .68rem; border-radius: 6px; }
+  .track-wrap { padding-top: 26px; }
+  .tr-cell { height: 34px; font-size: .62rem; }
+  .track-tokens { height: 90px; }
+  .tr-token { min-width: 17px; height: 17px; font-size: .6rem; }
+  .ba-arena { gap: 6px; }
+  .ba-canvas { max-width: 118px; }
+  /* tarjetas y botones al ancho de la pantalla, sin scroll horizontal */
+  .fin-row, .ba-fighter, .panel, .card { max-width: 100%; }
+  .q-card { padding: 12px; }
+}
 
 /* ------------------------------- BATALLA ------------------------------- */
 .ba-shield {
@@ -497,9 +523,9 @@ select.ffield, select { cursor: pointer; }
 .ba-arena { display: flex; align-items: center; justify-content: center; gap: 10px; margin: 12px auto 14px; max-width: 720px; }
 .ba-fighter { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 0; }
 .ba-canvas {
-  border-radius: 18px; width: 100%; max-width: 160px; height: auto;
-  background: radial-gradient(circle at 50% 28%, #f8fafc, #eef2ff 70%, #e2e8f0);
-  box-shadow: 0 8px 18px rgba(15,23,42,.18), inset 0 0 0 2px #e2e8f0;
+   border-radius: 18px; width: 100%; max-width: 160px; height: auto;
+   background: radial-gradient(circle at 50% 28%, rgba(248,250,252,.82), rgba(238,242,255,.78) 70%, rgba(226,232,240,.8));
+   box-shadow: 0 8px 18px rgba(15,23,42,.18), inset 0 0 0 2px rgba(226,232,240,.9);
 }
 .ba-vs { font-weight: 900; color: #7c3aed; font-size: 1.1rem; text-align: center; line-height: 1.2; }
 .ba-pose { font-size: .75rem; font-weight: 700; color: #64748b; background: #fff; border: 1px solid var(--line); border-radius: 999px; padding: 3px 12px; transition: all .15s; }

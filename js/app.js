@@ -454,6 +454,11 @@ App.roam = (function () {
     });
     card.appendChild(quick);
 
+    /* acceso a las plantillas de los modos (avatares/index.html) */
+    const tmpl = ui.el('a', 'block text-center text-xs text-indigo-600 underline mt-5', 'Ver las plantillas de los 4 juegos (con escenarios) →');
+    tmpl.href = 'avatares/index.html';
+    card.appendChild(tmpl);
+
     repaint();
   }
 
@@ -579,6 +584,11 @@ App.launchGame = function (opts) {
   container.innerHTML = '';
   const game = App.games[opts.mode];
   if (!game || !game.init) { container.appendChild(ui.el('p', 'text-sm', 'Modo no implementado.')); return; }
+  const ESCENARIOS = {
+    batalla: 'campo-de-batalla.svg',
+    carrera: 'pista-de-carreras.svg',
+    conquista: 'terreno-de-conquista.svg'
+  };
 
   /* toolbar de salida */
   const top = ui.el('div', 'flex items-center justify-between mb-4', '');
@@ -597,6 +607,25 @@ App.launchGame = function (opts) {
     App.session.record(config, config.players.map((p) => ({ id: p.id, puntos: 0 })), opts.mode);
     console.error(e);
     return;
+  }
+
+  /* escenario estático como capa de fondo real del modo (680x380, sin deformar).
+   * Se inserta DESPUÉS de init (los juegos vacían su contenedor) y queda detrás
+   * de todo con z-index:-1 + isolation: no tapa sprites ni HUD, y al ser
+   * object-fit:contain se adapta igual a celular. */
+  if (ESCENARIOS[opts.mode]) {
+    container.style.position = 'relative';
+    container.style.isolation = 'isolate';
+    const bg = document.createElement('img');
+    bg.className = 'escenario-capa';
+    bg.src = 'escenarios-estaticos/' + ESCENARIOS[opts.mode];
+    bg.alt = '';
+    bg.setAttribute('aria-hidden', 'true');
+    bg.width = 680; bg.height = 380;
+    bg.decoding = 'async';
+    container.appendChild(bg);
+    container.insertBefore(bg, container.firstChild);
+    container.classList.add('con-escenario');
   }
   App.roam.navBtn('inicio');
 };

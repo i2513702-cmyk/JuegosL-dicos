@@ -1,8 +1,11 @@
 <!DOCTYPE html>
 <html lang="es">
 <head>
-<meta charset="UTF-8">
+<meta charset="utf-8">
 <title>Auditoría completa · LudoApp</title>
+<!-- base en la raíz del proyecto: el escenario se resuelve como en la app real -->
+<base href="../">
+<link rel="stylesheet" href="css/styles.css">
 <style>
   body { font: 13px/1.5 Consolas, monospace; margin: 12px; color: #1e293b; }
   h1 { font-size: 16px; }
@@ -16,7 +19,7 @@
 <h1>🚦 Auditoría LudoApp (navegador real)</h1>
 <div id="audit-list"></div>
 <pre id="audit-out"></pre>
-<div id="gamehost" style="display:none"></div>
+<div id="gamehost" style="display:block;width:680px;max-width:100%;margin:0 auto"></div>
 
 <div class="skeleton" style="display:none">
   <header class="site-head">
@@ -292,12 +295,18 @@
     var docNeed = { ludo: 1, batalla: 2, carrera: 2, conquista: 2 };
     var players = App.storage.getPlayers().filter(function (p) { return p.rol !== 'docente'; });
     var STARTERS = ['Lanzar', 'Tirar', 'Comenzar', 'Iniciar', 'Jugar', 'Empezar', '▶', '🎲', 'Continuar', 'Siguiente', 'Atacar', 'Avanzar', 'Responder', 'Jabalina', 'Movimiento', 'Turno', 'Acción'];
+    var ZONE_SEL = '.cq-zone, .zone, .cell, .tile, .casilla, .slot, .square, .sq';
+    var zoneCursor = 0;
     function clickStarter(root) {
       var b = $$('button', root).find(function (btn2) {
         var t = (btn2.textContent || '').trim();
         if (btn2.disabled) return false;
         return STARTERS.some(function (k) { return t.indexOf(k) !== -1; });
       });
+      if (!b) {
+        var zones = $$(ZONE_SEL, root);
+        if (zones.length) b = zones[zoneCursor++ % zones.length];
+      }
       if (b) { b.click(); return true; }
       return false;
     }
@@ -319,6 +328,51 @@
         await wait(350);
         var childs = host.children.length > 0;
         step(childs, 'juego ' + mode + ': init renderiza (' + host.children.length + ' nodos)');
+
+        /* ---- escenario estático de fondo (solo los 3 modos que lo tienen) ---- */
+        var ESC = { batalla: 'campo-de-batalla.svg', carrera: 'pista-de-carreras.svg', conquista: 'terreno-de-conquista.svg' };
+        var bg = host.querySelector('img.escenario-capa');
+        if (ESC[mode]) {
+          step(!!bg, 'juego ' + mode + ': escenario ' + ESC[mode] + ' insertado');
+          if (bg) {
+            var loaded = bg.complete && bg.naturalWidth === 680 && bg.naturalHeight === 380;
+            step(loaded, 'juego ' + mode + ': SVG cargado 680x380 (natural ' + bg.naturalWidth + 'x' + bg.naturalHeight + ')');
+            /* realmente visible: no puede quedar tapado por el juego */
+            var r = bg.getBoundingClientRect();
+            step(r.width > 50 && r.height > 20, 'juego ' + mode + ': escenario visible (' + Math.round(r.width) + 'x' + Math.round(r.height) + ' px)');
+            var cs = getComputedStyle(bg);
+            step(cs.objectFit === 'contain', 'juego ' + mode + ': object-fit contain (no deforma)');
+            step(parseInt(cs.zIndex, 10) < 0, 'juego ' + mode + ': escenario detras del HUD (z-index ' + cs.zIndex + ')');
+            /* no puede tapar el juego: es el primer hijo y el contenido va después
+               (con z-index negativo queda detrás de todo lo demás) */
+            var first = host.firstElementChild;
+            var after = Array.prototype.slice.call(host.children).filter(function (el) {
+              return el !== bg && el.getBoundingClientRect().height > 0;
+            });
+            step(first === bg && after.length > 0,
+              'juego ' + mode + ': escenario al fondo, con ' + after.length + ' elemento(s) de juego por encima');
+            /* prueba de visibilidad: las superficies del juego deben ser
+               translúcidas, si no taparían el escenario */
+            var surfaces = Array.prototype.slice.call(host.querySelectorAll('*')).filter(function (el) {
+              var s = getComputedStyle(el);
+              var bg = s.backgroundColor || '', bi = s.backgroundImage || '';
+              var translucent = (/rgba\([^)]*0?\.\d+\)/.test(bg) && bg !== 'transparent') || /rgba\(/.test(bi);
+              return translucent && el.getBoundingClientRect().height > 4;
+            });
+            step(surfaces.length >= 2,
+              'juego ' + mode + ': ' + surfaces.length + ' superficie(s) translúcidas (el escenario se ve)');
+          }
+        } else {
+          step(!bg, 'juego ' + mode + ': sin escenario (correcto: no hay SVG para Ludo)');
+        }
+
+        /* ---- responsive: sin scroll horizontal a 375px ---- */
+        var prevW = document.documentElement.style.width;
+        document.documentElement.style.width = '375px';
+        await wait(150);
+        var overflow = document.documentElement.scrollWidth - document.documentElement.clientWidth;
+        document.documentElement.style.width = prevW;
+        step(overflow <= 2, 'juego ' + mode + ': apto celular 375px sin scroll horizontal');
 
         /* ---- jugar de verdad: hasta 5 interacciones ---- */
         var before = errors.length;

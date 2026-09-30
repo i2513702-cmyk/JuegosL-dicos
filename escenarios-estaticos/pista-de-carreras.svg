@@ -1,0 +1,33 @@
+<svg width="680" height="380" viewBox="0 0 680 380" role="img" xmlns="http://www.w3.org/2000/svg">
+<title>Pista de carreras</title>
+<desc>Escenario estatico de una pista de carreras con carriles, meta a cuadros y cielo despejado, pensado como fondo para que los avatares corran como pilotos encima</desc>
+<rect x="0" y="0" width="680" height="150" fill="#7fb4d8"/>
+<circle cx="90" cy="60" r="28" fill="#fff0c0"/>
+<g fill="#ffffff" opacity="0.85">
+<ellipse cx="480" cy="55" rx="34" ry="14"/>
+<ellipse cx="510" cy="60" rx="26" ry="11"/>
+<ellipse cx="560" cy="50" rx="30" ry="12"/>
+<ellipse cx="590" cy="56" rx="22" ry="10"/>
+</g>
+<rect x="0" y="150" width="680" height="40" fill="#3a7a3a"/>
+<rect x="0" y="190" width="680" height="190" fill="#4a4a52"/>
+<g opacity="0.5" stroke="#e8e8e8" stroke-width="2" stroke-dasharray="14 12">
+<line x1="0" y1="228" x2="680" y2="228"/>
+<line x1="0" y1="266" x2="680" y2="266"/>
+<line x1="0" y1="304" x2="680" y2="304"/>
+<line x1="0" y1="342" x2="680" y2="342"/>
+</g>
+<g id="finish">
+<rect x="600" y="190" width="24" height="190" fill="#ffffff"/>
+<rect x="600" y="190" width="12" height="12" fill="#222222"/>
+<rect x="612" y="202" width="12" height="12" fill="#222222"/>
+<rect x="600" y="214" width="12" height="12" fill="#222222"/>
+<rect x="612" y="226" width="12" height="12" fill="#222222"/>
+<rect x="600" y="238" width="12" height="12" fill="#222222"/>
+<rect x="612" y="250" width="12" height="12" fill="#222222"/>
+<rect x="600" y="262" width="12" height="12" fill="#222222"/>
+<rect x="612" y="274" width="12" height="12" fill="#222222"/>
+</g>
+<rect x="630" y="200" width="6" height="170" fill="#3a3a3a"/>
+<rect x="624" y="190" width="18" height="16" fill="#e0c060"/>
+</svg>
