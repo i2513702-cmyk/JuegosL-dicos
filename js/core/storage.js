@@ -15,6 +15,7 @@ window.App = window.App || {};
 App.storage = (function () {
   const PREFIX = 'ludoApp:';
   const COLLECTIONS = ['courses', 'categories', 'difficulties', 'questions', 'players', 'sessions', 'attempts', 'users', 'lobbies'];
+  const SKILL_STARTS = { pista: 2, comodin: 2, doble_dano: 2, escudo: 2, impulso: 2, cura: 3 };
   const SHARED = ['players', 'users', 'lobbies'];
 
   function syncNotify(col, id) {
@@ -191,8 +192,22 @@ App.storage = (function () {
       nivel: 1,
       logros: [],
       modosGanados: [],
-      skills: { pista: 1, comodin: 0, doble_dano: 1, escudo: 1, impulso: 0, cura: 0 }
+      skills: Object.assign({}, SKILL_STARTS)
     };
+  }
+
+  /* Kit inicial garantizado: la partida siempre debe tener curacion
+     disponible. Nunca se baja lo que el jugador ya tenga. */
+  function grantSkillStarts() {
+    const all = read('players');
+    let changed = false;
+    all.forEach((p) => {
+      p.skills = p.skills || {};
+      Object.keys(SKILL_STARTS).forEach((k) => {
+        if ((p.skills[k] || 0) < SKILL_STARTS[k]) { p.skills[k] = SKILL_STARTS[k]; changed = true; }
+      });
+    });
+    if (changed) write('players', all);
   }
 
   function seedAll(collection, items) {
@@ -227,6 +242,7 @@ App.storage = (function () {
     }
 
     localStorage.setItem(PREFIX + 'seeded', 'true');
+    grantSkillStarts();
   }
 
   init();

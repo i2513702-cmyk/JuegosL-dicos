@@ -1,0 +1,333 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Movimiento de avatares</title>
+<link rel="stylesheet" href="../css/styles.css">
+<style>#gamehost > div { max-width: 680px; margin: 0 auto; }</style>
+</head>
+<body>
+<div id="gamehost"></div>
+<pre id="mov-out" style="display:none"></pre>
+<script src="../js/core/data.js"></script>
+<script src="../js/core/storage.js"></script>
+<script src="../js/core/questionEngine.js"></script>
+<script src="../js/core/progressionEngine.js"></script>
+<script src="../js/core/avatars.js"></script>
+<script src="../js/core/gamekit.js"></script>
+<script src="../js/core/api.js"></script>
+<script src="../js/ui/ui.js"></script>
+<script src="../js/games/ludo.js"></script>
+<script src="../js/games/batalla.js"></script>
+<script src="../js/games/carrera.js"></script>
+<script src="../js/games/conquista.js"></script>
+<script src="../js/app.js"></script>
+<script src="../js/admin.js"></script>
+<script src="../js/auth.js"></script>
+<script>
+/* Verifica que las piezas se MUEVEN de verdad al jugar:
+   - Ludo: las fichas avanzan casilla a casilla sobre el tablero del SVG
+   - Carrera: los pilotos avanzan por el asfalto hacia la meta
+   - Conquista: los avatares conquistan territorio (aparecen avatares nuevos) */
+var steps = [], errors = [];
+window.addEventListener('error', function (e) { errors.push(e.message); });
+window.addEventListener('unhandledrejection', function (e) {
+  errors.push('promesa rechazada: ' + ((e.reason && (e.reason.stack || e.reason.message)) || e.reason));
+});
+var origErr = console.error;
+console.error = function () { errors.push([].slice.call(arguments).join(' ')); origErr.apply(console, arguments); };
+
+function wait(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+function $(s, r) { return (r || document).querySelector(s); }
+function $$(s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); }
+function step(ok, msg) { steps.push({ ok: !!ok, msg: msg }); }
+function rect(el) { var r = el.getBoundingClientRect(); return { l: r.left, t: r.top, w: r.width, h: r.height }; }
+function diff(a, b) { return Math.abs(a.l - b.l) + Math.abs(a.t - b.t); }
+function b64(s) { return btoa(unescape(encodeURIComponent(s))); }
+
+var STARTERS = ['Lanzar', 'Lanzar dado', 'Jugar', 'Continuar', 'Siguiente turno', 'Tirar', 'Ata', 'Responder', 'Aceptar', 'Empezar', 'OK', 'Entendido', 'Avanzar', '▶'];
+
+function clickStarter(root) {
+  var b = $$('button', root).filter(function (btn) {
+    var t = (btn.textContent || '').trim();
+    if (btn.disabled) return false;
+    for (var i = 0; i < STARTERS.length; i++) if (t.indexOf(STARTERS[i]) !== -1) return true;
+    return false;
+  })[0];
+  if (b) { b.click(); return true; }
+  return false;
+}
+
+/*responde CORRECTAMENTE: se espia el motor para saber cual es la opcion buena,
+   porque sin acierto las fichas no avanzan ni se conquista territorio */
+var lastQ = null;
+var timerDiag = '';
+(function hookTimer() {
+  var tb = App.gamekit.timerBox;
+  App.gamekit.timerBox = function (root, secs, cb, before) {
+    var fc = root.firstChild;
+    timerDiag = 'root=' + (root.id || root.className || root.tagName) +
+      ' first=' + (fc ? fc.nodeName : 'null') +
+      ' parentOK=' + (fc ? (fc.parentNode === root) : 'n/a') +
+      ' before=' + (before ? (before.nodeName + '/' + (before.parentNode === root)) : 'none');
+    return tb.apply(null, arguments);
+  };
+})();
+(function hookEngine() {
+  var orig = App.questionEngine.createEngine;
+  App.questionEngine.createEngine = function (o) {
+    var eng = orig.call(App.questionEngine, o);
+    var draw = eng.draw;
+    eng.draw = function () { lastQ = draw.apply(eng, arguments); return lastQ; };
+    return eng;
+  };
+})();
+
+var aciertos = 0;
+var respuestas = [];
+(function hookRecord() {
+  var orig = App.progression.recordAnswer;
+  App.progression.recordAnswer = function () {
+    var r = orig.apply(App.progression, arguments);
+    respuestas.push(!!(r && r.correct));
+    return r;
+  };
+})();
+var toasts = [];
+(function hookToast() {
+  var orig = App.ui.toast;
+  App.ui.toast = function (msg) { toasts.push(String(msg)); return orig.apply(App.ui, arguments); };
+})();
+function ultimosToasts(n) { return toasts.slice(-n).join(' // ').slice(0, 150); }
+function resumenRespuestas() {
+  var ok = respuestas.filter(Boolean).length;
+  return ok + '/' + respuestas.length + ' respuestas correctas segun el juego';
+}
+function responder(root) {
+  var opts = $$('.opt-btn', root).filter(function (b) { return !b.disabled; });
+  if (!opts.length) return false;
+  var idx = (lastQ && typeof lastQ.respuesta_correcta === 'number') ? lastQ.respuesta_correcta : 0;
+  var btn = opts[Math.min(idx, opts.length - 1)];
+  btn.click();
+  if (btn.classList.contains('opt-correct')) aciertos++;
+  return true;
+}
+
+/* tras responder hay que pulsar "Continuar": ahi se avisa al juego (onAnswered) */
+function continuar(root) {
+  var cont = $$('button', root).filter(function (b) {
+    return !b.disabled && /Continuar/i.test(b.textContent || '');
+  })[0];
+  if (cont) { cont.click(); return true; }
+  return false;
+}
+
+/* un turno completo: lanza / responde bien */
+function jugarTurno(root) {
+  if (continuar(root)) return true;
+  if ($$('.opt-btn', root).some(function (b) { return !b.disabled; })) { responder(root); return true; }
+  if (clickStarter(root)) return true;
+  return false;
+}
+
+/* juega varios turnos esperando lo que haga falta (dados, animaciones) */
+var varacted = false;
+async function jugarVarios(root, vueltas, ms) {
+  for (var i = 0; i < vueltas; i++) {
+    varacted = jugarTurno(root);
+    await wait(ms);
+    if (!varacted) {
+      await wait(ms);
+      if (!jugarTurno(root)) break;
+    }
+  }
+}
+
+/* zona libre adyacente a un territorio ya conquistado (para poder atacar) */
+function zonaLegal(root) {
+  var zs = $$('.cq-zone', root);
+  var mine = zs.filter(function (z) { return !z.classList.contains('cq-neutral'); });
+  if (!mine.length) return zs[0];
+  var base = rect(mine[0]);
+  var bw = base.w, bh = base.h;
+  for (var i = 0; i < zs.length; i++) {
+    var r = rect(zs[i]);
+    var esVecina = (Math.abs(r.l - base.l) < bw * 0.4 && (Math.abs(r.t - base.t - bh) < 3 || Math.abs(base.t - r.t - bh) < 3)) ||
+                   (Math.abs(r.t - base.t) < bh * 0.4 && (Math.abs(r.l - base.l - bw) < 3 || Math.abs(base.l - r.l - bw) < 3));
+    if (esVecina) return zs[i];
+  }
+  return zs[0];
+}
+
+function ownedZones(root) {
+  return $$('.cq-zone', root).filter(function (z) {
+    return !z.classList.contains('cq-neutral') && !!z.querySelector('canvas');
+  }).length;
+}
+
+function launch(mode, players) {
+  var gh = $('#gamehost');
+  gh.innerHTML = '';
+  var host = document.createElement('div');
+  gh.appendChild(host);
+  App.launchGame({
+    container: host, mode: mode,
+    courseId: App.storage.getCourses()[0].id, categoryId: '', difficultyId: '',
+    timeSeconds: 180,
+    playerIds: players.slice(0, 4).map(function (p) { return p.id; })
+  });
+  return host;
+}
+
+(async function () {
+  var courses = App.storage.getCourses();
+  var players = App.storage.getPlayers();
+
+  /* ---------------- LUDO ---------------- */
+  try {
+    var host = launch('ludo', players);
+    await wait(400);
+    var errBox = host.textContent.match(/No se pudo iniciar:\s*([^\n]+)/);
+    step(!errBox, 'ludo: el juego arranca sin errores' + (errBox ? ' -> ' + errBox[1].slice(0, 60) + ' [timer: ' + timerDiag + ']' : ''));
+    var escena = $('.escena', host);
+    step(!!escena && !!$('img.escenario-capa', host), 'ludo: tablero estatico cargado');
+    var toks = $$('.l-token', host);
+    step(toks.length >= 8, 'ludo: ' + toks.length + ' fichas en el tablero');
+    var esc = escena ? rect(escena) : null;
+    var dentro = toks.filter(function (t) {
+      var r = rect(t);
+      return esc && r.l >= esc.l - 2 && r.t >= esc.t - 2 && r.l + r.w <= esc.l + esc.w + 2 && r.t + r.h <= esc.t + esc.h + 2;
+    });
+    step(dentro.length === toks.length, 'ludo: ' + dentro.length + '/' + toks.length + ' fichas dentro del tablero');
+    /* cada ficha debe caer sobre una casilla del SVG (15x15, celda 24, margen 12) */
+    var bien = 0;
+    toks.forEach(function (t) {
+      var r = rect(t);
+      var cx = (r.l + r.w / 2 - esc.l) / esc.w * 384;
+      var cy = (r.t + r.h / 2 - esc.t) / esc.h * 384;
+      var col = Math.floor((cx - 12) / 24), row = Math.floor((cy - 12) / 24);
+      var dCol = Math.abs((cx - 12) - (col + 0.5) * 24), dRow = Math.abs((cy - 12) - (row + 0.5) * 24);
+      if (col >= 0 && col < 15 && row >= 0 && row < 15 && dCol < 6 && dRow < 6) bien++;
+    });
+    step(bien === toks.length, 'ludo: ' + bien + '/' + toks.length + ' fichas alineadas con las casillas del tablero');
+
+    var antes = toks.map(rect);
+    /* dado siempre 6: es la unica forma de que las fichas salgan de su casa */
+    var rndReal = Math.random;
+    Math.random = function () { return 0.999; };
+    await jugarVarios(host, 60, 300);
+    Math.random = rndReal;
+    await wait(1200);
+    var despues = $$('.l-token', host).map(rect);
+    var movidas = 0;
+    for (var k = 0; k < Math.min(antes.length, despues.length); k++) if (diff(antes[k], despues[k]) > 2) movidas++;
+    /* el HUD muestra "Casilla N/56": prueba funcional del avance */
+    var mLudo = /Casilla\s+(\d+)\/56/.exec(host.textContent || '');
+    var casillaLudo = mLudo ? parseInt(mLudo[1], 10) : -1;
+    step(casillaLudo > 0, 'ludo: las fichas avanzan por el tablero (casilla ' + casillaLudo + '/56) | ' +
+      movidas + '/' + antes.length + ' fichas movidas | ' + resumenRespuestas());
+    var dentro2 = $$('.l-token', host).filter(function (t) {
+      var r = rect(t);
+      return esc && r.l >= esc.l - 2 && r.t >= esc.t - 2 && r.l + r.w <= esc.l + esc.w + 2 && r.t + r.h <= esc.t + esc.h + 2;
+    });
+    step(dentro2.length === despues.length, 'ludo: las fichas siguen dentro del tablero tras moverse (' + dentro2.length + '/' + despues.length + ')');
+  } catch (e) {
+    step(false, 'ludo: excepción ' + e.message);
+  }
+
+  /* ---------------- CARRERA ---------------- */
+  try {
+    var host2 = launch('carrera', players);
+    await wait(400);
+    var toks2 = $$('.tr-token', host2);
+    step(toks2.length >= 4, 'carrera: ' + toks2.length + ' pilotos en la pista');
+    var esc2 = rect($('.escena', host2));
+    var enPista = toks2.filter(function (t) {
+      var r = rect(t);
+      return r.l >= esc2.l - 2 && r.t >= esc2.t - 2 && r.l + r.w <= esc2.l + esc2.w + 2 && r.t + r.h <= esc2.t + esc2.h + 2;
+    });
+    step(enPista.length === toks2.length, 'carrera: ' + enPista.length + '/' + toks2.length + ' pilotos dentro de la escena');
+    var enAsfalto = toks2.filter(function (t) {
+      var r = rect(t);
+      var y = (r.t + r.h / 2 - esc2.t) / esc2.h * 380;
+      return y >= 190;                     /* el asfalto va de y=190 a 380 */
+    });
+    step(enAsfalto.length === toks2.length, 'carrera: ' + enAsfalto.length + '/' + toks2.length + ' pilotos sobre el asfalto');
+    var a2 = toks2.map(rect);
+    var st0 = toks2.map(function (t) { return t.style.left; }).join('|');
+    respuestas = [];
+    await jugarVarios(host2, 30, 240);
+    var d2 = $$('.tr-token', host2).map(rect);
+    var st1 = $$('.tr-token', host2).map(function (t) { return t.style.left; }).join('|');
+    var mov2 = 0;
+    for (var k2 = 0; k2 < Math.min(a2.length, d2.length); k2++) if (d2[k2].l - a2[k2].l > 1) mov2++;
+    step(mov2 > 0, 'carrera: ' + mov2 + '/' + a2.length + ' pilotos avanzaron | ' + resumenRespuestas() +
+      ' | posicion: ' + st1.split('|')[0]);
+
+    /* la carrera debe terminar en la meta, con ganador anunciado */
+    var banderas = 0, maxLeft = 0;
+    for (var g = 0; g < 140; g++) {
+      jugarTurno(host2); await wait(150);
+      $$('.tr-token', host2).forEach(function (t) { maxLeft = Math.max(maxLeft, parseFloat(t.style.left) || 0); });
+      if (!banderas) banderas = $$('.tr-finish', host2).length;
+      if ($$('.podium-card', host2).length) break;
+    }
+    var podio = $$('.podium-card', host2).length;
+    var titulo = ($('.podium-card', host2) && host2.textContent || '').replace(/\s+/g, ' ');
+    step(mov2 > 0 && maxLeft >= 70, 'carrera: los pilotos avanzan horizontalmente hasta el final de la pista (' +
+      maxLeft.toFixed(1) + '% del ancho, meta en 82%)');
+    step(banderas > 0, 'carrera: ' + banderas + ' piloto(s) con bandera al cruzar la linea de meta');
+    step(podio > 0, 'carrera: al llegar a la meta se cierra la partida y aparece el podio (' + podio + ' puestos)');
+    step(/cruz|gana|meta/i.test(titulo), 'carrera: el podio anuncia al ganador que cruzo la meta');
+  } catch (e2) {
+    step(false, 'carrera: excepción ' + e2.message);
+  }
+
+  /* ---------------- CONQUISTA ---------------- */
+  try {
+    var host3 = launch('conquista', players);
+    await wait(400);
+    var zonas = $$('.cq-zone', host3);
+    step(zonas.length > 0, 'conquista: ' + zonas.length + ' parcelas sobre el terreno');
+    var esc3 = rect($('.escena', host3));
+    var dentro3 = zonas.filter(function (z) {
+      var r = rect(z);
+      return r.l >= esc3.l - 2 && r.t >= esc3.t - 2 && r.l + r.w <= esc3.l + esc3.w + 2 && r.t + r.h <= esc3.t + esc3.h + 2;
+    });
+    step(dentro3.length === zonas.length, 'conquista: ' + dentro3.length + '/' + zonas.length + ' parcelas dentro del terreno');
+    /* las parcelas deben caer sobre la retícula del SVG (x=40, y=20, 75x42.5) */
+    var enRet = 0;
+    zonas.forEach(function (z) {
+      var r = rect(z);
+      var x = (r.l - esc3.l) / esc3.w * 680, y = (r.t - esc3.t) / esc3.h * 380;
+      var col = Math.round((x - 40) / 75), row = Math.round((y - 20) / 42.5);
+      if (col >= 0 && col < 8 && row >= 0 && row < 8 &&
+          Math.abs(x - (40 + col * 75)) < 6 && Math.abs(y - (20 + row * 42.5)) < 6) enRet++;
+    });
+    step(enRet > 0, 'conquista: ' + enRet + '/' + zonas.length + ' parcelas alineadas con la retícula del SVG');
+
+    var own0 = ownedZones(host3);
+    respuestas = [];
+    for (var c = 0; c < 14; c++) {
+      var z = zonaLegal(host3);
+      if (!z) break;
+      z.click();
+      await wait(260);
+      jugarTurno(host3);            /* responder + Continuar */
+      await wait(260);
+      jugarTurno(host3);
+      await wait(260);
+    }
+    var own1 = ownedZones(host3);
+    step(own1 > own0, 'conquista: territorio ' + own0 + ' -> ' + own1 + ' parcelas | ' + resumenRespuestas());
+  } catch (e3) {
+    step(false, 'conquista: excepción ' + e3.message);
+  }
+
+  var out = b64(JSON.stringify({ steps: steps, errors: errors }));
+  document.getElementById('mov-out').textContent = out;
+  document.title = 'LISTO';
+})();
+</script>
+</body>
+</html>

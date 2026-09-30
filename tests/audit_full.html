@@ -297,14 +297,6 @@
     var STARTERS = ['Lanzar', 'Tirar', 'Comenzar', 'Iniciar', 'Jugar', 'Empezar', '▶', '🎲', 'Continuar', 'Siguiente', 'Atacar', 'Avanzar', 'Responder', 'Jabalina', 'Movimiento', 'Turno', 'Acción'];
     var ZONE_SEL = '.cq-zone, .zone, .cell, .tile, .casilla, .slot, .square, .sq';
     var zoneCursor = 0;
-    function $$movers(root, sel) {
-      return Array.prototype.slice.call(root.querySelectorAll(sel));
-    }
-    function ownedCount(root) {
-      return $$('.cq-zone', root).filter(function (z) {
-        return !z.classList.contains('cq-neutral') && !!z.querySelector('canvas');
-      }).length;
-    }
     function clickStarter(root) {
       var b = $$('button', root).find(function (btn2) {
         var t = (btn2.textContent || '').trim();
@@ -361,7 +353,7 @@
               step(er.width > 50 && er.height > 20, 'juego ' + mode + ': escena visible (' + Math.round(er.width) + 'x' + Math.round(er.height) + ' px)');
               /* la caja debe conservar el formato del SVG: si no, la imagen se deformaria */
               var ratio = er.width / er.height, want = def.w / def.h;
-              step(Math.abs(ratio - want) < 0.05, 'juego ' + mode + ': escena con formato 680x380 (ratio ' + ratio.toFixed(3) + ')');
+              step(Math.abs(ratio - want) < 0.05, 'juego ' + mode + ': escena con formato ' + def.w + 'x' + def.h + ' (ratio ' + ratio.toFixed(3) + ')');
               /* la imagen ocupa exactamente la escena (object-fit dentro de la caja exacta) */
               step(Math.abs(br.width - er.width) < 2 && Math.abs(br.height - er.height) < 2 && Math.abs(br.left - er.left) < 2,
                 'juego ' + mode + ': la imagen cubre la escena entera sin deformarse');
@@ -396,7 +388,7 @@
                   Math.round(firstOut.getBoundingClientRect().height) + ')'
                 : '';
               step(visible.length > 0 && out.length === 0,
-                'juego ' + mode + ': ' + (visible.length - out.length) + '/' + visible.length + ' avatar(es) dentro de la escena' + det);
+                'juego ' + mode + ': ' + (visible.length - out.length) + '/' + actors.length + ' avatar(es) dentro de la escena' + det);
 
               /* nadie puede tapar la escena con una superficie opaca grande */
               var capers = Array.prototype.slice.call(escena.querySelectorAll('*')).filter(function (el) {
@@ -413,45 +405,117 @@
               });
               step(tapers.length === 0, 'juego ' + mode + ': nada opaco tapa la escena (' + tapers.length + ' tapando)');
 
+              var enAsfalto = $$('.tr-token', host).filter(function (t) {
+                var r = t.getBoundingClientRect();
+                var ry = (r.top + r.height / 2 - er.top) / er.height * 380;
+                return ry >= 190 && ry <= 380 && r.width > 0;
+              });
+              if (mode === 'carrera') {
+                step(enAsfalto.length === $$('.tr-token', host).length && enAsfalto.length > 0,
+                  'juego carrera: ' + enAsfalto.length + ' piloto(s) sobre el asfalto del SVG');
+              }
+              /* los avatares deben verse: tamaño real en pantalla */
+              if (mode === 'carrera') {
+                var toksC = $$('.tr-token', host);
+                var anchos = toksC.map(function (t) { return Math.round(t.getBoundingClientRect().width); });
+                var altos = toksC.map(function (t) { return Math.round(t.getBoundingClientRect().height); });
+                var minW = toksC.length ? Math.min.apply(null, anchos) : 0;
+                var minH = toksC.length ? Math.min.apply(null, altos) : 0;
+                step(minW >= 40 && minH >= 40, 'juego carrera: los avatares se ven con tamano real (min ' + minW + 'x' + minH + ' px)');
+              }
+
+              if (mode === 'carrera') {
+                var dbgT = $$('.tr-token', host)[0];
+                var dbgP = dbgT.parentElement, dbgG = dbgP.parentElement;
+                var rS = dbgT.closest('.escena').getBoundingClientRect();
+                step(false, 'DEBUG escena:' + Math.round(rS.left) + ',' + Math.round(rS.top) + ' ' + Math.round(rS.width) + 'x' + Math.round(rS.height) +
+                  ' | tokens=' + $$('.tr-token', host).map(function (t, i) {
+                    var r = t.getBoundingClientRect();
+                    return i + ':' + Math.round(r.left) + ',' + Math.round(r.top) + ' ' + Math.round(r.width) + 'x' + Math.round(r.height) +
+                      ' [' + t.style.left + '/' + t.style.top + '] padre:' + Math.round(t.parentElement.getBoundingClientRect().top) +
+                      ' h' + Math.round(t.parentElement.getBoundingClientRect().height);
+                  }).join('  '));
+              }
+
               /* la zona de preguntas/marcador queda FUERA de la escena, abajo */
               var qOut = host.querySelector('.q-card, .hud, .fin-row');
               step(!qOut || !escena.contains(qOut), 'juego ' + mode + ': HUD y preguntas fuera de la escena (no la tapan)');
             }
+
+            /* Batalla: barras de vida pixeladas sobre las cabezas + curacion */
+            if (mode === 'batalla') {
+              var boxes = $$('.ba-hpbox', capa);
+              step(boxes.length >= 2, 'juego batalla: ' + boxes.length + ' barra(s) de vida pixelada sobre las cabezas');
+              var conPct = boxes.filter(function (b) {
+                var r = b.getBoundingClientRect(), p = b.querySelector('.ba-hpbox-pct');
+                return r.height > 8 && p && /%$/.test(p.textContent);
+              });
+              step(conPct.length === boxes.length && boxes.length > 0,
+                'juego batalla: las barras pixeladas muestran el porcentaje de vida dentro');
+              var sobre = boxes.filter(function (b) {
+                var r = b.getBoundingClientRect(), f = b.closest('.ba-fighter').getBoundingClientRect();
+                return r.bottom <= f.top + 6;
+              });
+              step(sobre.length === boxes.length && boxes.length > 0,
+                'juego batalla: las barras quedan encima de las cabezas (' + sobre.length + '/' + boxes.length + ')');
+
+              /* curacion: baja la vida simulando dano y usa la habilidad */
+              var box0 = boxes[0];
+              var antes = box0.querySelector('.ba-hpbox-pct').textContent;
+              var cura = $$('.skill-btn', host).filter(function (b) { return /cura/i.test(b.textContent); })[0];
+              step(!!cura, 'juego batalla: hay boton de curacion');
+              if (cura) {
+                cura.click();
+                await wait(350);
+                var boxTras = $$('.ba-hpbox', capa)[0];
+                var animado = boxTras.className.indexOf('ba-hpbox-heal') !== -1;
+                var despues = boxTras.querySelector('.ba-hpbox-pct').textContent;
+                step(animado || parseInt(despues, 10) > parseInt(antes, 10),
+                  'juego batalla: la curacion se aplica y anima la barra (' + antes + '% -> ' + despues + '%)');
+              }
+
+              /* la curacion tiene que recuperar vida real: se provoca un dano
+                 (el rival responde y ataca) y luego se cura al herido. */
+              for (var t2 = 0; t2 < 8; t2++) {
+                var opt = $$('.opt-btn', host).filter(function (b) { return !b.disabled; })[0];
+                if (opt) { opt.click(); await wait(260); continue; }
+                if (!clickStarter(host)) break;
+                await wait(320);
+              }
+              /* curacion de verdad: en cada turno, si el equipo actual esta herido se
+                     cura y se comprueba que recupera vida. */
+              var curas = 0, intentos = 0;
+              for (var h = 0; h < 18; h++) {
+                var turnoEl = $$('.ba-hpbox', capa).filter(function (b) { return /turn/.test(b.className); })[0];
+                if (turnoEl) {
+                  var pct = parseInt(turnoEl.querySelector('.ba-hpbox-pct').textContent, 10);
+                  if (pct < 100) {
+                    intentos++;
+                    var cura3 = $$('.skill-btn', host).filter(function (b) {
+                      return /cura/i.test(b.textContent) && !b.classList.contains('skill-btn-empty');
+                    })[0];
+                    step(!!cura3, 'juego batalla: el equipo con ' + pct + '% de vida tiene el boton de curacion');
+                    if (cura3) {
+                      for (var w2 = 0; w2 < 10 && host.querySelector('.skill-locked'); w2++) await wait(200);
+                      cura3.click();
+                      await wait(450);
+                      var pct2 = parseInt(turnoEl.querySelector('.ba-hpbox-pct').textContent, 10);
+                      if (pct2 > pct) curas++;
+                    }
+                    continue;
+                  }
+                }
+                var o3 = $$('.opt-btn', host).filter(function (b) { return !b.disabled; })[0];
+                if (o3) o3.click();
+                else if (!clickStarter(host)) break;
+                await wait(300);
+              }
+              step(intentos > 0 && curas === intentos,
+                'juego batalla: la curacion recupera vida real (' + curas + '/' + intentos + ' curaciones aplicadas)');
+            }
           }
         } else {
           step(!bg, 'juego ' + mode + ': sin escenario');
-        }
-
-        /* ---- las piezas se MUEVEN de verdad al jugar ---- */
-        if (mode === 'ludo' || mode === 'carrera') {
-          var movers = mode === 'ludo' ? '.l-token' : '.tr-token';
-          var before = $$movers(host, movers);
-          for (var mv = 0; mv < 8; mv++) {
-            var okMv = clickStarter(host);
-            if (!okMv) { var o2 = $$('.opt-btn', host); if (o2.length) { o2[0].click(); okMv = true; } }
-            if (!okMv) break;
-            await wait(240);
-          }
-          await wait(600);
-          var after = $$movers(host, movers);
-          var moved = 0;
-          for (var mi = 0; mi < Math.min(before.length, after.length); mi++) {
-            if (Math.abs(after[mi].getBoundingClientRect().left - before[mi].getBoundingClientRect().left) > 1 ||
-                Math.abs(after[mi].getBoundingClientRect().top - before[mi].getBoundingClientRect().top) > 1) moved++;
-          }
-          step(before.length > 0 && moved > 0,
-            'juego ' + mode + ': ' + moved + '/' + before.length + ' ficha(s) avanzaron al jugar');
-        }
-        if (mode === 'conquista') {
-          var own0 = ownedCount(host);
-          for (var cv = 0; cv < 4; cv++) {
-            var zs = $$('.cq-zone', host);
-            if (!zs.length) break;
-            zs[Math.floor(Math.random() * zs.length)].click();
-            await wait(300);
-          }
-          var own1 = ownedCount(host);
-          step(own1 > 0, 'juego conquista: los avatares conquistan territorio (' + own0 + ' -> ' + own1 + ' parcelas con dueño)');
         }
 
         /* ---- responsive: sin scroll horizontal a 375px ---- */

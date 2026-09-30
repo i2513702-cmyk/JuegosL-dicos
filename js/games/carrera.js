@@ -16,8 +16,8 @@ App.games.carrera = (function (ui) {
       categoryId: config.categoryId,
       difficultyId: config.difficultyId
     });
-    const TOTAL = config.trackLength || 30;
-    const OBSTACLES = [4, 9, 14, 19, 24, 27];
+    const TOTAL = config.trackLength || 14;
+    const OBSTACLES = [3, 6, 9, 11];
     const colors = ['rojo', 'verde', 'azul', 'amarillo'];
 
     const players = config.players.map((p, i) => ({
@@ -88,6 +88,16 @@ App.games.carrera = (function (ui) {
       tokenEls.push(t);
     });
 
+    /* Bandera de meta para quien llega primero. */
+    function markFinished(p, i) {
+      p.finished = true;
+      const el = tokenEls[i];
+      if (!el) return;
+      el.classList.add('tr-finish');
+      const flag = ui.el('span', 'tr-flag', '\uD83C\uDFC1');
+      el.appendChild(flag);
+    }
+
     function paintTrack() {
       players.forEach((p, i) => {
         const t = tokenEls[i];
@@ -97,7 +107,11 @@ App.games.carrera = (function (ui) {
           t.style.left = (p.pos / TOTAL * 100) + '%';
           t.style.top = (20 + (i % 2) * 34) + '%';
         }
-        if (p.finished) t.style.opacity = 0.6;
+        if (p.finished) {
+            t.style.opacity = 1;
+          } else {
+            t.style.opacity = 0.98;
+          }
       });
     }
     paintTrack();
@@ -213,9 +227,9 @@ App.games.carrera = (function (ui) {
             if (el) el.classList.remove('tr-run');
             return resolve(true);
           }
-          setTimeout(step, 220);
+          setTimeout(step, 130);
         };
-        setTimeout(step, 30);
+        setTimeout(step, 20);
       });
     }
 
@@ -237,7 +251,15 @@ App.games.carrera = (function (ui) {
           ui.sound('correct');
           ui.toast(p.nombre + ' avanza +' + steps + (p.streak >= 2 ? ' (racha x' + p.streak + ' 🔥)' : ''), 'success');
           await slideAnim(p, steps, () => {});
-          if (p.pos >= TOTAL) return endGame(p.id);
+          if (p.pos >= TOTAL) {
+            markFinished(p, state.turn);
+            ui.sound('win');
+            ui.toast('🏁 ' + p.nombre + ' cruzó la meta y gana la Carrera', 'success');
+            ui.confetti(root);
+            /* pequeño descanso para ver la bandera antes del podio */
+            await new Promise((r) => setTimeout(r, 700));
+            return endGame(p.id);
+          }
           if (OBSTACLES.indexOf(p.pos) !== -1) {
             ui.toast('⚠️ ¡Obstáculo! -2 casillas', 'warn');
             ui.shake(track);

@@ -57,8 +57,12 @@ App.gamekit = (function () {
   function timerBox(root, seconds, onTimeout, beforeEl) {
     const wrap = U().el('div', 'mb-3', '');
     wrap.innerHTML = '<div class="tb"><div class="tb-fill"></div><span class="tb-label">00:00</span></div>';
-    if (beforeEl) root.insertBefore(wrap, beforeEl);
-    else root.insertBefore(wrap, root.firstChild);
+    /* el ancla solo sirve si de verdad cuelga de root (p.ej. el tablero de Ludo
+       ahora vive dentro de la escena y no es hijo directo del contenedor) */
+    const first = root.firstChild;
+    const ref = beforeEl && beforeEl.parentNode === root ? beforeEl
+      : (first && first.parentNode === root ? first : null);
+    root.insertBefore(wrap, ref);
     const t = U().timerBar(wrap, seconds, onTimeout);
     t.start();
     return t;

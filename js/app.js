@@ -638,9 +638,14 @@ App.launchGame = function (opts) {
      justo debajo de la barra de salida */
   if (escena) {
     container.style.position = 'relative';
-    const toolbar = container.firstElementChild;
-    if (toolbar && toolbar.nextSibling) container.insertBefore(escena, toolbar.nextSibling);
-    else container.appendChild(escena);
+    try {
+      const toolbar = container.firstElementChild;
+      const ref = toolbar && toolbar.parentNode === container ? toolbar.nextSibling : null;
+      if (ref) container.insertBefore(escena, ref);
+      else container.appendChild(escena);
+    } catch (err) {
+      container.appendChild(escena);   /* la escena nunca se queda fuera del tablero */
+    }
   }
   App.roam.navBtn('inicio');
 };

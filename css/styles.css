@@ -579,6 +579,56 @@ select.ffield, select { cursor: pointer; }
 #ba-pose-a.ba-pose-active { background: #dc2626; }
 #ba-pose-b.ba-pose-active { background: #2563eb; }
 
+/* Barra de vida pixelada flotante sobre la cabeza del avatar */
+.ba-hpbox {
+  position: absolute; left: 50%; bottom: 100%; transform: translate(-50%, -6px);
+  width: 118%; pointer-events: none; z-index: 6;
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+}
+.ba-hpbox-name {
+  font: 700 10px/1 ui-monospace, 'Courier New', monospace;
+  color: #fff; text-shadow: 0 2px 0 rgba(15,23,42,.9);
+  max-width: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+}
+.ba-hpbox-bar {
+  position: relative; width: 100%; height: 16px;
+  background: #111827; border: 3px solid #0b1220;
+  box-shadow: 0 0 0 2px rgba(255,255,255,.85), 0 4px 0 rgba(2,6,23,.55);
+  image-rendering: pixelated; overflow: hidden;
+}
+.ba-hpbox-bar::after {
+  /* textura pixelada: celdas cuadradas sobre la barra */
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  background:
+    repeating-linear-gradient(90deg, rgba(0,0,0,.35) 0 3px, rgba(0,0,0,0) 3px 6px),
+    linear-gradient(rgba(255,255,255,.28) 0 50%, rgba(0,0,0,.22) 50% 100%);
+}
+.ba-hpbox-fill {
+  position: absolute; inset: 0 auto 0 0; width: 100%;
+  background: repeating-linear-gradient(90deg, #22c55e 0 6px, #16a34a 6px 12px);
+  transition: width .35s steps(8, end);
+}
+.ba-hpbox-pct {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  font: 700 9px/1 ui-monospace, 'Courier New', monospace; letter-spacing: .5px;
+  color: #fff; text-shadow: 1px 1px 0 #000, -1px 1px 0 #000, 1px -1px 0 #000, -1px -1px 0 #000;
+  z-index: 2;
+}
+.ba-hpbox-turn .ba-hpbox-bar { box-shadow: 0 0 0 3px #fbbf24, 0 4px 0 rgba(2,6,23,.55); }
+.ba-hpbox-turn .ba-hpbox-name { color: #fde68a; }
+.ba-hpbox-mid .ba-hpbox-fill { background: repeating-linear-gradient(90deg, #fbbf24 0 6px, #d97706 6px 12px); }
+.ba-hpbox-low .ba-hpbox-fill { background: repeating-linear-gradient(90deg, #f87171 0 6px, #dc2626 6px 12px); }
+.ba-hpbox-low { animation: hpBlink .7s steps(2, end) infinite; }
+.ba-hpbox-shield .ba-hpbox-bar { box-shadow: 0 0 0 2px #a5b4fc, 0 0 12px rgba(99,102,241,.9); }
+@keyframes hpBlink { 50% { opacity: .55; } }
+@keyframes hpHeal {
+  0% { filter: brightness(2.2) saturate(.4); transform: translate(-50%, -6px) scale(1); }
+  40% { transform: translate(-50%, -12px) scale(1.07); }
+  100% { filter: none; transform: translate(-50%, -6px) scale(1); }
+}
+.ba-hpbox-heal { animation: hpHeal .9s steps(6, end); }
+.ft-heal { color: #16a34a; font-weight: 800; }
+
 /* Carrera: los pilotos van sobre el asfalto (mitad inferior del SVG) */
 .tr-en-escena { position: absolute; left: 0; right: 0; top: 50%; bottom: 0; max-width: none; padding-top: 0; margin: 0; }
 .tr-en-escena .track-tokens { top: 0; height: 100%; }
@@ -588,6 +638,18 @@ select.ffield, select { cursor: pointer; }
   filter: drop-shadow(0 1px 2px rgba(15,23,42,.6));
 }
 .tr-en-escena .tr-token { transition: left .22s, top .22s; }
+/* pilotos mas grandes sobre el asfalto: el avance se ve a simple vista.
+   OJO: el porcentaje va en el token (su ancho si es definitivo); si se
+   pusiera en el canvas se resolveria contra el token y quedaria diminuto. */
+.tr-en-escena .tr-token.tr-token-avatar { width: 11%; min-width: 0; }
+.tr-en-escena .tr-token.tr-token-avatar canvas { width: 100%; height: auto; display: block; }
+.tr-token.tr-finish canvas { filter: drop-shadow(0 0 8px rgba(253,224,71,.95)); }
+.tr-flag {
+  position: absolute; left: 50%; top: -14px; transform: translateX(-50%);
+  font-size: .95rem; line-height: 1; animation: flagPop .45s steps(4, end);
+}
+@keyframes flagPop { from { transform: translateX(-50%) scale(0) rotate(-40deg); } }
+.tr-run.tr-token-avatar canvas { animation: runBounce .12s linear infinite; }
 
 .cq-zone { transition: transform .15s, box-shadow .15s; }
 
@@ -600,6 +662,7 @@ select.ffield, select { cursor: pointer; }
 #ba-pose-a.ba-pose-active { background: #dc2626; }
 #ba-pose-b.ba-pose-active { background: #2563eb; }
 .skill-btn:active { transform: scale(.96); }
+.skill-locked { opacity: .45; pointer-events: none; filter: grayscale(.6); }
 
 /* animación de movimiento (salto/carrera) de las fichas */
 .tr-run canvas { animation: runBounce .22s linear infinite; }
