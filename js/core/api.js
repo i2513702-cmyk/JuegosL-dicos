@@ -27,7 +27,9 @@ App.api = (function () {
     App.storage.setKey('apiToken', t || null);
   }
 
-  /* request(): devuelve Promise<respuesta> o Promise<null> si la API no responde. */
+  /* request(): devuelve Promise<respuesta> o Promise<null> si la API no responde.
+   * Adjunta el status HTTP (r.status) para distinguir 401 (credenciales malas)
+   * de 500 (la base aún no está lista) y poder degradar con elegancia. */
   function request(path, opts) {
     opts = opts || {};
     return fetch(base() + path, {
@@ -38,7 +40,11 @@ App.api = (function () {
       },
       body: opts.body ? JSON.stringify(opts.body) : undefined
     })
-      .then((r) => r.json().catch(() => ({ ok: false, reason: 'HTTP ' + r.status })))
+      .then(async (r) => {
+        const body = await r.json().catch(() => ({}));
+        body.status = r.status;
+        return body;
+      })
       .catch(() => null);
   }
 

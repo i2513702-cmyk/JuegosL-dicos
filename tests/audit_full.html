@@ -1,0 +1,389 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<title>Auditoría completa · LudoApp</title>
+<style>
+  body { font: 13px/1.5 Consolas, monospace; margin: 12px; color: #1e293b; }
+  h1 { font-size: 16px; }
+  .ok { color: #047857; } .fail { color: #b91c1c; } .warn { color: #b45309; }
+  #audit-list div { margin: 2px 0; }
+  #audit-out { display: none; }
+  .modal-overlay, .confirm-box, .admin-form { position: static; visibility: visible; background: #fff; border: 1px dashed #94a3b8; margin: 6px 0; padding: 8px; }
+</style>
+</head>
+<body>
+<h1>🚦 Auditoría LudoApp (navegador real)</h1>
+<div id="audit-list"></div>
+<pre id="audit-out"></pre>
+<div id="gamehost" style="display:none"></div>
+
+<div class="skeleton" style="display:none">
+  <header class="site-head">
+    <nav id="main-nav" class="nav-tabs"></nav>
+    <div id="user-bar" class="nav-tabs"></div>
+  </header>
+  <main id="app" class="page"></main>
+  <div id="toast-root" class="toast-root"></div>
+</div>
+<script>
+/* el esqueleto debe existir ANTES de que corran los scripts de la app */
+(function () {
+  var s = document.querySelector('.skeleton');
+  s.style.display = '';
+  var body = document.body;
+  ['main-nav', 'user-bar', 'app', 'toast-root'].forEach(function (id) {
+    var node = s.querySelector('#' + id);
+    body.insertBefore(node, document.getElementById('audit-out'));
+  });
+})();
+</script>
+
+<script src="../js/core/data.js"></script>
+<script src="../js/core/storage.js"></script>
+<script src="../js/core/questionEngine.js"></script>
+<script src="../js/core/progressionEngine.js"></script>
+<script src="../js/core/avatars.js"></script>
+<script src="../js/core/gamekit.js"></script>
+<script src="../js/core/api.js"></script>
+<script src="../js/ui/ui.js"></script>
+<script src="../js/games/ludo.js"></script>
+<script src="../js/games/batalla.js"></script>
+<script src="../js/games/carrera.js"></script>
+<script src="../js/games/conquista.js"></script>
+<script src="../js/app.js"></script>
+<script src="../js/admin.js"></script>
+<script src="../js/auth.js"></script>
+<script src="../js/core/sync.js"></script>
+
+<script>
+(function () {
+  'use strict';
+  var steps = [];
+  var errors = [];
+  var warnings = [];
+  var seen = {};
+
+  function rec(list, type, text) {
+    var key = type + '|' + text;
+    if (seen[key]) { seen[key].n += 1; return; }
+    var entry = { type: type, text: String(text).slice(0, 300), n: 1 };
+    seen[key] = entry;
+    list.push(entry);
+  }
+
+  window.addEventListener('error', function (e) { rec(errors, 'pageerror', (e && e.message) + (e && e.filename ? ' @' + e.filename + ':' + e.lineno : '')); });
+  window.addEventListener('unhandledrejection', function (e) { rec(errors, 'rejection', (e && e.reason && e.reason.message) || (e && e.reason) || 'promise'); });
+
+  var origErr = console.error, origWarn = console.warn;
+  console.error = function () { rec(errors, 'console', Array.prototype.map.call(arguments, String).join(' ')); origErr.apply(console, arguments); };
+  console.warn = function () { rec(warnings, 'warn', Array.prototype.map.call(arguments, String).join(' ')); origWarn.apply(console, arguments); };
+
+  function step(ok, msg) {
+    steps.push({ ok: !!ok, msg: msg });
+    var div = document.createElement('div');
+    div.className = ok ? 'ok' : 'fail';
+    div.textContent = (ok ? 'OK  ' : 'FAIL ') + msg;
+    document.getElementById('audit-list').appendChild(div);
+  }
+
+  function $ (s, r) { return (r || document).querySelector(s); }
+  function $$ (s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); }
+  function wait(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+  function btn(txt, r) { return $$('button', r || document).find(function (b) { return (b.textContent || '').includes(txt); }); }
+  function rowByText(txt, r) { return $$('.admin-row', r || document).find(function (row) { return (row.textContent || '').includes(txt); }); }
+  function getField(label, root) {
+    return $$('.form-row', root || document).map(function (row) {
+      var l = $('.form-label', row);
+      return { label: l ? l.textContent.trim() : '', ctl: $('.form-ctl', row) };
+    }).filter(function (f) { return f.label === label; })[0] || null;
+  }
+
+  var app = document.getElementById('app') || document.body;
+
+  /* login por el formulario real: rol -> cuenta -> Ingresar */
+  async function loginAs(rol, usuario) {
+    var role = btn(rol === 'docente' ? 'Docente' : 'Alumno');
+    if (role) { role.click(); await wait(80); }
+    var sel = $('#app select');
+    if (sel) {
+      var opt = Array.prototype.find.call(sel.options, function (o) { return o.value === usuario; });
+      if (opt) sel.value = opt.value;
+    }
+    var go = btn('🔑 Ingresar');
+    if (go) go.click();
+    await wait(200);
+    return !!App.auth.who();
+  }
+
+  (async function run() {
+    window.App.boot();
+    await wait(120);
+    step(!!$('#app') && (document.body.textContent || '').includes('Iniciar sesión'), 'boot: pantalla de login sin usuario');
+
+    /* ---- login docente por la UI real ---- */
+    var loggedDoc = await loginAs('docente', 'profe');
+    step(loggedDoc && (document.body.textContent || '').includes('Sala de juego'), 'login local docente (formulario)');
+
+    /* ---- crear sala ---- */
+    var cb = btn('➕ Crear nueva partida');
+    if (cb) { cb.click(); await wait(150); }
+    var codeEl = $('.lobby-code');
+    step(!!codeEl && App.lobby.listMine(App.auth.who().id).length >= 1, 'crear sala: se muestra el código ' + (codeEl ? codeEl.textContent : ''));
+
+    /* ---- modal configurar ---- */
+    var cfg = btn('⚙️ Configurar');
+    if (cfg) { cfg.click(); await wait(120); }
+    var ovOpen = !!$('.modal-overlay');
+    var cancel = btn('Cancelar');
+    if (cancel) cancel.click();
+    await wait(120);
+    step(ovOpen && !$('.modal-overlay'), 'modal "Configurar partida" abre y cierra');
+
+    /* ---- juego ludo desde la sala (iniciar partida) ---- */
+    /* se agrega un segundo jugador para que los modos multijugador tengan participantes */
+    var studs = App.storage.getPlayers().filter(function (p) { return p.rol !== 'docente'; });
+    var lobby = App.lobby.listMine(App.auth.who().id)[0];
+    if (lobby && studs[1]) App.storage.update('lobbies', lobby.id, { jugadores: [studs[1].id] });
+    await wait(400);
+    /* volvemos a la vista para repintar la sala con su jugador */
+    App.go('inicio'); await wait(120);
+    var start = btn('▶ Iniciar partida');
+    var started = false;
+    if (start) { start.click(); await wait(500); started = !!$('#app') && $('#app').children.length > 2; }
+    step(!!start && started, 'iniciar partida ludo desde la sala del docente');
+
+    /* ---- panel docente: pestaña preguntas ---- */
+    var navDoc = btn('Panel docente');
+    if (navDoc) navDoc.click();
+    await wait(150);
+    step((document.body.textContent || '').includes('Panel docente'), 'panel docente renderizado (ruta #/docente)');
+
+    var np = btn('➕ Nueva pregunta');
+    if (np) np.click();
+    await wait(120);
+    var modalOpen = !!$('.admin-form');
+    if (modalOpen) {
+      var courses = App.storage.getCourses();
+      var diffs = App.storage.getDifficulties();
+      var fCurso = getField('Curso'), fCat = getField('Categoría'), fDif = getField('Dificultad'),
+          fEnun = getField('Enunciado'), fCorr = getField('Respuesta correcta'),
+          fOpc = ['A', 'B', 'C', 'D'].map(function (k) { return getField('Opción ' + k); }),
+          fFbk = getField('Retroalimentación'), fEj = getField('Ejemplo aplicado (opcional)');
+      if (fCurso && fCurso.ctl) {
+        var sel = fCurso.ctl.querySelector('select');
+        sel.value = courses[0].id;
+        sel.dispatchEvent(new Event('change'));
+      }
+      if (fEnun && fEnun.ctl) fEnun.ctl.querySelector('input').value = '¿Pregunta de auditoría?';
+      if (fOpc.every(function (o) { return o && o.ctl; })) {
+        fOpc.forEach(function (o, i) { o.ctl.querySelector('input').value = 'Opción audit ' + (i + 1); });
+      }
+      if (fCorr && fCorr.ctl) fCorr.ctl.querySelector('select').value = '1';
+      if (fFbk && fFbk.ctl) fFbk.ctl.querySelector('input').value = 'Muy bien';
+      if (fEj && fEj.ctl) fEj.ctl.querySelector('input').value = 'Ejemplo';
+      if (fDif && fDif.ctl && diffs[0]) fDif.ctl.querySelector('select').value = diffs[0].id;
+      var save = btn('💾 Guardar');
+      var before = App.storage.getQuestions().length;
+      if (save) save.click();
+      await wait(150);
+      var after = App.storage.getQuestions().length;
+      var added = modalOpen && !$('.admin-form') && after === before + 1;
+      step(added, 'preguntas: crear pregunta desde el modal (antes ' + before + ' → después ' + after + ')');
+      if (added) {
+        var row = rowByText('¿Pregunta de auditoría?');
+        var del = row && row.querySelector('button.btn-danger');
+        if (del) { del.click(); await wait(80); }
+        var yes = btn('Sí, continuar');
+        if (yes) yes.click();
+        await wait(150);
+        step(App.storage.getQuestions().length === before, 'preguntas: eliminar pregunta con confirmación');
+      }
+    } else {
+      step(false, 'preguntas: el modal de nueva pregunta no abrió');
+    }
+
+    /* ---- pestañas del panel ---- */
+    var tabKeys = ['Cursos', 'Categorías', 'Dificultades', 'Estudiantes', 'Reportes', 'Datos'];
+    for (var k = 0; k < tabKeys.length; k++) {
+      var key = tabKeys[k];
+      await wait(60);
+      var t = btn(key);
+      if (!t) { step(false, 'panel ' + key + ': no se encontró la pestaña'); continue; }
+      t.click();
+      await wait(100);
+      var okTab = (document.body.textContent || '').includes(key) && ($('.admin-body') && $('.admin-body').children.length > 0);
+      step(okTab, 'panel ' + key + ' renderiza');
+      try {
+        if (key === 'Estudiantes') {
+          var pick = btn('🎨');
+          if (pick) { pick.click(); await wait(80); var av = $('.avatar-choice'); if (av) av.click(); }
+        } else if (key === 'Cursos') {
+          var iNew = $('.ffield[placeholder*="Nombre del curso"]');
+          if (iNew) { iNew.value = 'Curso de auditoría'; var add = btn('➕ Añadir'); if (add) add.click(); }
+        }
+        await wait(120);
+      } catch (e) { rec(errors, 'console', 'tab ' + key + ': ' + e.message); }
+    }
+    step(App.storage.getCourses().some(function (c) { return c.nombre === 'Curso de auditoría'; }), 'cursos: añadir curso desde el panel');
+    /* volver a la pestaña Cursos para poder borrar el curso recién creado */
+    var tabC = btn('Cursos');
+    if (tabC) { tabC.click(); await wait(120); }
+    var ar = rowByText('Curso de auditoría');
+    if (ar) { var db = ar.querySelector('button.btn-danger'); if (db) { db.click(); await wait(80); var yes2 = btn('Sí, continuar'); if (yes2) yes2.click(); } }
+    await wait(120);
+    step(!App.storage.getCourses().some(function (c) { return c.nombre === 'Curso de auditoría'; }), 'cursos: eliminar el curso recién creado');
+
+    /* ---- logout + login estudiante ---- */
+    var salir = btn('Salir');
+    if (salir) { salir.click(); await wait(150); }
+    step(!!salir && (document.body.textContent || '').includes('Iniciar sesión'), 'logout: vuelve a la pantalla de login');
+    var loggedStu = await loginAs('estudiante', 'maria');
+    var admin = App.auth.currentPlayer();
+    step(loggedStu && !!admin && admin.rol === 'estudiante' && (document.body.textContent || '').includes('Unirse a la partida'), 'login local estudiante (formulario)');
+
+    /* ---- progreso estudiante ---- */
+    var prog = btn('Mi progreso');
+    if (prog) { prog.click(); await wait(150); }
+    step((document.body.textContent || '').includes('Mi progreso') && !!$('.stat-card'), 'vista estudiante: progreso con estadísticas');
+
+    /* ---- motores: preguntas y progresión ---- */
+    try {
+      var qe = App.questionEngine.createEngine({ courseId: App.storage.getCourses()[0].id, categoryId: '', difficultyId: '' });
+      var q = qe.pool[0];
+      var okCheck = App.questionEngine.check(q, q.respuesta_correcta) && !App.questionEngine.check(q, (q.respuesta_correcta + 1) % 4);
+      step(qe.pool.length > 0 && okCheck, 'questionEngine: pool + check correcto/incorrecto');
+      var mariaRec = App.storage.getPlayers().find(function (p) { return p.rol === 'estudiante'; });
+      var rw = App.progression.recordAnswer(mariaRec, { correct: true, difficultyId: q.difficulty_id, mode: 'ludo', courseId: App.storage.getCourses()[0].id, question: q, selectedIndex: q.respuesta_correcta });
+      step(!!rw && rw.rewards && rw.rewards.xp > 0, 'progression: recordAnswer otorga recompensas');
+      var prof = App.progression.getPlayerProfile(mariaRec.id);
+      step(!!prof && prof.nivel >= 1 && prof.skills && typeof prof.skills === 'object', 'progression: perfil completo (nivel ' + (prof ? prof.nivel : '?') + ')');
+      var ss = App.session.start({ mode: 'ludo', courseId: App.storage.getCourses()[0].id, categoryId: '', difficultyId: '', players: [{ id: mariaRec.id, nombre: mariaRec.nombre, color: 'rojo', puntos: 5 }] });
+      App.session.record({ mode: 'ludo', players: ss.players }, [{ id: mariaRec.id, puntos: 5 }], 'ludo');
+      step(App.storage.getSessions().length >= 1, 'session: start + record persisten la partida');
+      var rank = App.progression.ranking();
+      step(rank.length >= 1, 'ranking: hay al menos 1 jugador clasificado');
+    } catch (e) { step(false, 'motores: excepción ' + e.message); rec(errors, 'console', 'motores: ' + e.message); }
+
+    /* ---- card de pregunta (ui.question) ---- */
+    try {
+      var hostQ = document.createElement('div');
+      document.body.appendChild(hostQ);
+      var qe2 = App.questionEngine.createEngine({ courseId: App.storage.getCourses()[0].id });
+      var qq = qe2.draw();
+      App.ui.question({ engine: qe2, question: qq }, hostQ, {});
+      var optBtns = $$('.opt-btn', hostQ);
+      var correctBtn = optBtns[qq.respuesta_correcta];
+      if (correctBtn) correctBtn.click();
+      await wait(50);
+      step(optBtns.length === 4 && (hostQ.textContent || '').includes(qq.enunciado), 'ui.question: renderiza y responde');
+      hostQ.remove();
+    } catch (e) { step(false, 'ui.question: excepción ' + e.message); rec(errors, 'console', 'ui.question: ' + e.message); }
+
+    /* ---- logout ---- */
+    var salir2 = btn('Salir');
+    if (salir2) { salir2.click(); await wait(120); }
+    step(!App.auth.who() && (document.body.textContent || '').includes('Iniciar sesión'), 'logout estudiante: vuelve a login');
+
+    /* ---- 4 juegos: init en el navegador ---- */
+    await loginAs('docente', 'profe');
+    step(!!App.auth.who(), 're-login docente para lanzar los 4 juegos');
+    var games = ['ludo', 'batalla', 'carrera', 'conquista'];
+    var docNeed = { ludo: 1, batalla: 2, carrera: 2, conquista: 2 };
+    var players = App.storage.getPlayers().filter(function (p) { return p.rol !== 'docente'; });
+    var STARTERS = ['Lanzar', 'Tirar', 'Comenzar', 'Iniciar', 'Jugar', 'Empezar', '▶', '🎲', 'Continuar', 'Siguiente', 'Atacar', 'Avanzar', 'Responder', 'Jabalina', 'Movimiento', 'Turno', 'Acción'];
+    function clickStarter(root) {
+      var b = $$('button', root).find(function (btn2) {
+        var t = (btn2.textContent || '').trim();
+        if (btn2.disabled) return false;
+        return STARTERS.some(function (k) { return t.indexOf(k) !== -1; });
+      });
+      if (b) { b.click(); return true; }
+      return false;
+    }
+    for (var gi = 0; gi < games.length; gi++) {
+      var mode = games[gi];
+      try {
+        var host = document.createElement('div');
+        host.className = 'game-host';
+        document.getElementById('gamehost').appendChild(host);
+        App.launchGame({
+          container: host,
+          mode: mode,
+          courseId: App.storage.getCourses()[0].id,
+          categoryId: '',
+          difficultyId: '',
+          timeSeconds: 120,
+          playerIds: players.slice(0, docNeed[mode]).map(function (p) { return p.id; })
+        });
+        await wait(350);
+        var childs = host.children.length > 0;
+        step(childs, 'juego ' + mode + ': init renderiza (' + host.children.length + ' nodos)');
+
+        /* ---- jugar de verdad: hasta 5 interacciones ---- */
+        var before = errors.length;
+        var played = 0;
+        for (var turn = 0; turn < 5; turn++) {
+          var acted = clickStarter(host);
+          if (!acted) {
+            var opts = $$('.opt-btn', host);
+            if (opts.length) { opts[0].click(); acted = true; }
+          }
+          if (!acted) break;
+          played++;
+          await wait(320);
+        }
+        step(played > 0, 'juego ' + mode + ': se pudo jugar (' + played + ' acciones)');
+        step(errors.length === before, 'juego ' + mode + ': sin errores JS durante el juego');
+      } catch (e) {
+        step(false, 'juego ' + mode + ': excepción ' + e.message);
+        rec(errors, 'console', 'juego ' + mode + ': ' + e.message);
+      }
+    }
+
+    /* ---- gamekit: helpers compartidos ---- */
+    try {
+      var gk = App.gamekit;
+      var c1 = document.createElement('div');
+      c1.innerHTML = '<div class="chips-out"></div><div class="skills-out"></div><div class="timer-out"></div>';
+      gk.renderChips($('.chips-out', c1), players.slice(0, 2).map(function (p, i) { return { id: p.id, nombre: p.nombre, avatar: App.avatars.resolve(p, i) }; }), { size: 20 });
+      var usedSkill = false;
+      gk.renderSkills($('.skills-out', c1), [{ key: 'pista', icono: '💡', nombre: 'Pista', amount: 1 }], function () { usedSkill = true; });
+      var sk = $('.chips-out', c1).children.length && $('.skills-out', c1).querySelector('button.skill-btn');
+      if (sk) sk.click();
+      gk.timerBox($('.timer-out', c1), 3, function () {});
+      step($('.chips-out', c1).children.length === 2 && usedSkill && !!$('.tb', c1), 'gamekit: renderChips + renderSkills (clic) + timerBox');
+      c1.remove();
+    } catch (e) { step(false, 'gamekit: excepción ' + e.message); rec(errors, 'console', 'gamekit: ' + e.message); }
+
+    /* ---- bonus + pódium ---- */
+    try {
+      var bHost = document.createElement('div');
+      var asc = App.gamekit.bonusForPlayer(players[0], function () { return App.progression.getPlayerProfile(players[0].id); }, 'ludo');
+      var podDiv = document.createElement('div');
+      App.gamekit.podium(podDiv, [
+        { id: players[0].id, nombre: players[0].nombre, puntos: 10 },
+        { id: players[1] ? players[1].id : players[0].id, nombre: players[1] ? players[1].nombre : '—', puntos: 4 }
+      ], {});
+      step(!!asc && podDiv.children.length > 0, 'gamekit: bonusForPlayer y podium renderizan');
+      bHost.remove();
+    } catch (e) { step(false, 'podium/bonus: excepción ' + e.message); rec(errors, 'console', 'podium/bonus: ' + e.message); }
+
+    /* ---- resultado ---- */
+    var result = {
+      steps: steps,
+      errors: errors,
+      warnings: warnings,
+      fecha: new Date().toISOString()
+    };
+    var b64 = btoa(unescape(encodeURIComponent(JSON.stringify(result))));
+    document.getElementById('audit-out').textContent = b64;
+  })().catch(function (e) {
+    rec(errors, 'console', 'runner: ' + e.message);
+    var result = { steps: steps, errors: errors, warnings: warnings, fecha: new Date().toISOString() };
+    document.getElementById('audit-out').textContent = btoa(unescape(encodeURIComponent(JSON.stringify(result))));
+  });
+})();
+</script>
+</body>
+</html>
