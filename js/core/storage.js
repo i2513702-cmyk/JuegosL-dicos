@@ -210,6 +210,24 @@ App.storage = (function () {
     if (changed) write('players', all);
   }
 
+  /* Garantiza la ficha de jugador de un usuario NO docente.
+     Si player_id falta o apunta a una ficha borrada (p. ej. tras
+     sincronizar entre navegadores), la repara: la busca por nombre
+     o la crea, y re-vincula el usuario. */
+  function ensurePlayer(user) {
+    if (!user || user.rol === 'docente' || !user.id) return null;
+    if (user.player_id) {
+      const p = getById('players', user.player_id);
+      if (p) return p;
+    }
+    const key = String(user.nombre || user.usuario || '').trim().toLowerCase();
+    let p = key ? read('players').find((x) =>
+      String(x.nombre || '').trim().toLowerCase() === key && x.rol !== 'docente') : null;
+    if (!p && user.nombre) p = create('players', defaultStudent(user.nombre));
+    if (p) update('users', user.id, { player_id: p.id });
+    return p;
+  }
+
   function seedAll(collection, items) {
     if (read(collection).length) return;
     items.forEach((it) => create(collection, it));
@@ -253,6 +271,8 @@ App.storage = (function () {
     endpoint,
     getCourses, getCategories, getDifficulties, getQuestions,
     resetData,
+    ensurePlayer,
+    defaultStudent,
     getPlayers: () => all('players'),
     getSessions: () => all('sessions').slice().reverse(),
     getAttempts: () => all('attempts').slice().reverse(),

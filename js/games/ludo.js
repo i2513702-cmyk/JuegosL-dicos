@@ -414,7 +414,8 @@ if (owner !== -1 && owner < state.players.length) {
     }
 
     function bonusOf(winner) {
-      return App.gamekit.bonusForPlayer(winner, profileOf, MODE);
+      /* gamekit invoca profileOf con el id del jugador */
+      return App.gamekit.bonusForPlayer(winner, (id) => App.storage.getById('players', id), MODE);
     }
 
     function endGame(winnerIdx) {

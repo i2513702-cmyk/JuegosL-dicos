@@ -23,15 +23,22 @@ App.games.batalla = (function (ui) {
 
     /* si hay más de 2 participantes se forman 2 equipos */
     const parts = config.players.map((p, i) => ({ ...p, color: i % 2 }));
+    const MAX_HP = config.hpTotal || 100;
     const teams = [
-      { members: parts.filter((p) => p.color === 0), hp: config.hpTotal || 100, color: colors[0], shield: 0, streak: 0, doubleReady: false, pendHint: false, pendComodin: false },
-      { members: parts.filter((p) => p.color === 1), hp: config.hpTotal || 100, color: colors[1], shield: 0, streak: 0, doubleReady: false, pendHint: false, pendComodin: false }
+      { members: parts.filter((p) => p.color === 0), hp: 0, color: colors[0], shield: 0, streak: 0, doubleReady: false, pendHint: false, pendComodin: false },
+      { members: parts.filter((p) => p.color === 1), hp: 0, color: colors[1], shield: 0, streak: 0, doubleReady: false, pendHint: false, pendComodin: false }
     ];
     teams.forEach((t, i) => {
       t.name = t.members.map((m) => m.nombre).join(', ') || 'Equipo ' + (i + 1);
       t.pose = 'idle';
       t.avatar = (t.members[0] && t.members[0].avatar) || App.avatars.pick(i);
+      /* cada participante tiene su propia vida; la del equipo es la suma */
+      t.members.forEach((m) => { m.hp = MAX_HP; });
+      t.hp = t.members.length * MAX_HP;
     });
+    function syncHP(t) {
+      t.hp = t.members.reduce((s, m) => s + Math.max(0, m.hp || 0), 0);
+    }
 
     const state = { turn: 0, ended: false, busy: false };
     const cur = () => teams[state.turn];
@@ -171,12 +178,16 @@ App.games.batalla = (function (ui) {
       renderArena(animFrame);
     }, 33);
 
-    /* Barra de vida pixelada flotante, encima de la cabeza de cada
-       avatar dentro de la escena. Muestra el porcentaje dentro. */
+    /* Barra de vida minimalista flotante: UNA caja por peleador,
+       encima de su propia cabeza dentro de la escena. */
+    function fighterFrame(i) {
+      return arena.querySelectorAll('.ba-fighter')[i] || null;
+    }
+
     function mountPixelHP() {
-      const frame = arena.querySelector('.ba-fighter');
-      if (!frame) return;
       teams.forEach((t, i) => {
+        const frame = fighterFrame(i);
+        if (!frame) return;
         const box = ui.el('div', 'ba-hpbox ba-hpbox-' + i);
         box.innerHTML =
           '<span class="ba-hpbox-name"></span>' +
@@ -186,12 +197,11 @@ App.games.batalla = (function (ui) {
     }
 
     function paintPixelHP() {
-      const frame = arena.querySelector('.ba-fighter');
-      if (!frame) return;
-      const total = config.hpTotal || 100;
       teams.forEach((t, i) => {
-        const box = frame.querySelector('.ba-hpbox-' + i);
+        const frame = fighterFrame(i);
+        const box = frame && frame.querySelector('.ba-hpbox');
         if (!box) return;
+        const total = MAX_HP * Math.max(1, t.members.length);
         const pct = Math.max(0, Math.round(t.hp / total * 100));
         box.querySelector('.ba-hpbox-fill').style.width = pct + '%';
         box.querySelector('.ba-hpbox-pct').textContent = pct + '%';
@@ -203,35 +213,35 @@ App.games.batalla = (function (ui) {
       });
     }
 
-    const bars = ui.el('div', 'grid grid-cols-2 gap-3 mb-4');
-    bars.innerHTML =
-      '<div><div class="text-xs font-bold mb-1" id="ba-name-a"></div><div id="ba-hp-a" class="hp-bar"><div class="hp-fill"></div><span class="hp-num">100</span></div></div>' +
-      '<div><div class="text-xs font-bold mb-1 text-right" id="ba-name-b"></div><div id="ba-hp-b" class="hp-bar"><div class="hp-fill"></div><span class="hp-num">100</span></div></div>';
-    root.appendChild(bars);
+    /* Marcador minimalista: UNA fila con barra por participante */
+    const roster = ui.el('div', 'ba-roster mb-4', '');
+    const rosterRows = [];
+    teams.forEach((t, ti) => {
+      t.members.forEach((m) => {
+        const row = ui.el('div', 'ba-hp-row ba-' + t.color, '');
+        row.innerHTML =
+          '<span class="ba-hp-name"></span>' +
+          '<span class="ba-hp-track"><i></i></span>' +
+          '<span class="ba-hp-num"></span>';
+        row.querySelector('.ba-hp-name').textContent = m.nombre;
+        roster.appendChild(row);
+        rosterRows.push({ ti, member: m, row, fill: row.querySelector('.ba-hp-track i'), num: row.querySelector('.ba-hp-num') });
+      });
+    });
+    root.appendChild(roster);
     mountPixelHP();
 
-    function hpNode(idx) {
-      return bars.querySelector('#ba-hp-' + (idx === 0 ? 'a' : 'b'));
-    }
-    function hpFill(idx) {
-      return hpNode(idx).querySelector('.hp-fill');
-    }
     function paintHP() {
-      teams.forEach((t, i) => {
-        const node = hpNode(i);
-        node.querySelector('.hp-num').textContent = Math.round(t.hp);
-        const fill = hpFill(i);
-        fill.style.width = Math.max(0, t.hp / (config.hpTotal || 100) * 100) + '%';
-        fill.style.background = t.hp <= 30 ? '#ef4444' : t.hp <= 55 ? '#f59e0b' : (t.color === 'rojo' ? '#dc2626' : '#2563eb');
-        node.querySelector('.ba-shield')?.remove();
-        if (t.shield > 0) {
-          const sh = ui.el('span', 'ba-shield', '🛡️');
-          node.appendChild(sh);
-        }
-        node.classList.toggle('hp-low', t.hp <= 30);
+      rosterRows.forEach((r) => {
+        const t = teams[r.ti];
+        const hp = Math.max(0, r.member.hp || 0);
+        const pct = hp / MAX_HP * 100;
+        r.fill.style.width = pct + '%';
+        r.num.textContent = Math.round(hp);
+        r.row.classList.toggle('is-turn', state.turn === r.ti);
+        r.row.classList.toggle('is-low', pct <= 30);
+        r.row.classList.toggle('is-shield', t.shield > 0);
       });
-      bars.querySelector('#ba-name-a').textContent = teams[0].name + (state.turn === 0 ? ' (turno)' : '');
-      bars.querySelector('#ba-name-b').textContent = teams[1].name + (state.turn === 1 ? ' (turno)' : '');
       paintPixelHP();
     }
 
@@ -282,49 +292,86 @@ App.games.batalla = (function (ui) {
       renderSkills();
     }
 
-    /* Curacion: aura verde, barra pixelada que se llena y texto flotante. */
+    /* Curacion: cura a cada integrante del equipo, aura verde y texto flotante. */
     function healAnim(t) {
-      const total = config.hpTotal || 100;
-      const before = Math.round(t.hp);
-      t.hp = Math.min(total, t.hp + 25);
-      const gained = Math.round(t.hp) - before;
+      let gained = 0;
+      t.members.forEach((m) => {
+        const before = m.hp || 0;
+        m.hp = Math.min(MAX_HP, before + 25);
+        gained += m.hp - before;
+      });
+      syncHP(t);
       t.pose = 'heal';
       const box = arena.querySelector('.ba-hpbox-' + (t.color === 'rojo' ? 0 : 1));
       if (box) { box.classList.remove('ba-hpbox-heal'); void box.offsetWidth; box.classList.add('ba-hpbox-heal'); }
       renderArena();
       ui.sound('correct');
-      ui.floatText(bars, '\u2764\uFE0F +' + gained, 'ft-heal');
+      ui.floatText(roster, '\u2764\uFE0F +' + gained, 'ft-heal');
       ui.toast(gained > 0 ? '\u2764\uFE0F Curacion: +' + gained + ' de vida' : '\u2764\uFE0F Ya estas al maximo de vida', gained > 0 ? 'success' : 'info');
       paintHP();
       setTimeout(() => { if (t.pose === 'heal') t.pose = 'idle'; renderArena(); }, 900);
     }
 
     function damageAnim(t, amount, showBlock) {
-      const node = hpNode(t.color === 'rojo' ? 0 : 1);
-      ui.shake(node);
+      const idx = t.color === 'rojo' ? 0 : 1;
+      const frame = fighterFrame(idx);
+      ui.shake(frame && frame.querySelector('.ba-canvas'));
+      const box = frame && frame.querySelector('.ba-hpbox');
+      if (box && amount > 0) ui.flash(box, 'ba-hpbox-hit', 400);
       if (showBlock) {
-        ui.floatText(bars, '🛡️ BLOQUEADO', 'ft-warn');
+        ui.floatText(roster, '🛡️ BLOQUEADO', 'ft-warn');
       } else if (amount > 0) {
-        ui.floatText(bars, '-' + amount + ' HP', 'ft-hit');
+        ui.floatText(roster, '-' + amount + ' HP', 'ft-hit');
         ui.sound('hit');
       }
-      t.hp = Math.max(0, Math.round(t.hp - amount));
+      if (amount > 0) {
+        /* el daño se reparte entre los integrantes vivos del equipo */
+        const living = t.members.filter((m) => (m.hp || 0) > 0);
+        if (living.length) {
+          const per = Math.round(amount / living.length);
+          let left = amount;
+          living.forEach((m, i) => {
+            const take = i === living.length - 1 ? left : Math.min(per, left);
+            m.hp = Math.max(0, (m.hp || 0) - take);
+            left -= take;
+          });
+        }
+        syncHP(t);
+      }
       paintHP();
+    }
+
+    function recordTeam(t, opts) {
+      /* registra la respuesta de cada integrante; tolera fichas inexistentes */
+      const corrects = [];
+      let correct = false;
+      t.members.forEach((m) => {
+        try {
+          const res = App.progression.recordAnswer(profileOf(m.id), opts);
+          if (res) {
+            if (!corrects.length) correct = res.correct;
+            corrects.push(res);
+          }
+        } catch (e) { console.error(e); }
+      });
+      const achievements = corrects.reduce((acc, c) => acc.concat(c.achievements || []), []);
+      return { correct: corrects.length ? correct : opts.fallbackCorrect, achievements };
     }
 
     function askTeam(t) {
       if (t.pendComodin) {
         t.pendComodin = false;
         const q = engine.draw();
-        const corrects = t.members.map((m) => App.progression.recordAnswer(profileOf(m.id), {
+        const rec = recordTeam(t, {
           question: q, selectedIndex: q.respuesta_correcta,
-          difficultyId: q.difficulty_id, mode: MODE, courseId: config.courseId
-        }));
+          difficultyId: q.difficulty_id, mode: MODE, courseId: config.courseId,
+          fallbackCorrect: true
+        });
         qArea.innerHTML = '';
         qArea.appendChild(ui.el('div', 'q-card bg-amber-50 border-amber-300',
           '<div class="font-bold text-amber-800">🃏 Comodín: acierto automático</div><p class="q-text-sm">' + q.enunciado + '</p>'));
         ui.sound('correct');
-        return Promise.resolve({ correct: true, q, dif: q.difficulty_id, achievements: corrects.flatMap((c) => c.achievements) });
+        return Promise.resolve({ correct: true, q, dif: q.difficulty_id, achievements: rec.achievements });
       }
 
       const q = engine.draw();
@@ -338,11 +385,12 @@ App.games.batalla = (function (ui) {
             return false;
           },
           onAnswered: (r) => {
-            const corrects = t.members.map((m) => App.progression.recordAnswer(profileOf(m.id), {
+            const rec = recordTeam(t, {
               question: q, selectedIndex: r.selectedIndex,
-              difficultyId: q.difficulty_id, mode: MODE, courseId: config.courseId
-            }));
-            resolve({ correct: corrects[0].correct, q, dif: q.difficulty_id, achievements: corrects.flatMap((c) => c.achievements) });
+              difficultyId: q.difficulty_id, mode: MODE, courseId: config.courseId,
+              fallbackCorrect: !!r.correct
+            });
+            resolve({ correct: rec.correct, q, dif: q.difficulty_id, achievements: rec.achievements });
           }
         });
       });
@@ -415,10 +463,10 @@ App.games.batalla = (function (ui) {
       renderSkills();
       paintHP();
       askTeam(t).then((res) => {
-        if (state.ended) return;
+        if (state.ended) { qArea.innerHTML = ''; return; }
         if (res.correct) {
           t.streak++;
-          res.achievements.forEach((a) => ui.toast('🏅 Logro: ' + a.titulo, 'success'));
+          (res.achievements || []).forEach((a) => ui.toast('🏅 Logro: ' + a.titulo, 'success'));
           actionPanel(t, res);
         } else {
           t.streak = 0;
@@ -428,6 +476,11 @@ App.games.batalla = (function (ui) {
           next.addEventListener('click', nextTurn);
           qArea.appendChild(next);
         }
+      }).catch((e) => {
+        console.error(e);
+        ui.toast('⚠️ No se pudo procesar la respuesta: ' + e.message, 'error');
+        state.busy = false;
+        renderSkills();
       });
     }
 

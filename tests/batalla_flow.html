@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Batalla flow · LudoApp</title>
+<base href="../">
+<link rel="stylesheet" href="css/styles.css">
+<style>
+  body { font: 13px/1.5 Consolas, monospace; margin: 12px; color: #1e293b; }
+  h1 { font-size: 16px; }
+  .ok { color: #047857; } .fail { color: #b91c1c; }
+  #audit-list div { margin: 2px 0; }
+  #audit-out { display: none; }
+  .modal-overlay, .confirm-box, .admin-form { position: static; visibility: visible; background: #fff; border: 1px dashed #94a3b8; margin: 6px 0; padding: 8px; }
+</style>
+</head>
+<body>
+<h1>⚔️ Batalla · flujo de pregunta y botón Continuar</h1>
+<div id="audit-list"></div>
+<pre id="audit-out"></pre>
+<div id="gamehost" style="display:block;width:680px;max-width:100%;margin:0 auto"></div>
+
+<div class="skeleton" style="display:none">
+  <header class="site-head">
+    <nav id="main-nav" class="nav-tabs"></nav>
+    <div id="user-bar" class="nav-tabs"></div>
+  </header>
+  <main id="app" class="page"></main>
+  <div id="toast-root" class="toast-root"></div>
+</div>
+<script>
+(function () {
+  var s = document.querySelector('.skeleton');
+  s.style.display = '';
+  var body = document.body;
+  ['main-nav', 'user-bar', 'app', 'toast-root'].forEach(function (id) {
+    var node = s.querySelector('#' + id);
+    body.insertBefore(node, document.getElementById('audit-out'));
+  });
+})();
+</script>
+
+<script src="../js/core/data.js"></script>
+<script src="../js/core/storage.js"></script>
+<script src="../js/core/questionEngine.js"></script>
+<script src="../js/core/progressionEngine.js"></script>
+<script src="../js/core/avatars.js"></script>
+<script src="../js/core/gamekit.js"></script>
+<script src="../js/core/api.js"></script>
+<script src="../js/ui/ui.js"></script>
+<script src="../js/games/ludo.js"></script>
+<script src="../js/games/batalla.js"></script>
+<script src="../js/games/carrera.js"></script>
+<script src="../js/games/conquista.js"></script>
+<script src="../js/app.js"></script>
+<script src="../js/auth.js"></script>
+<script src="../js/core/sync.js"></script>
+
+<script>
+(function () {
+  'use strict';
+  var steps = [];
+  var errors = [];
+  var seen = {};
+
+  function rec(list, type, text) {
+    var key = type + '|' + text;
+    if (seen[key]) { seen[key].n += 1; return; }
+    var entry = { type: type, text: String(text).slice(0, 300), n: 1 };
+    seen[key] = entry;
+    list.push(entry);
+  }
+
+  window.addEventListener('error', function (e) { rec(errors, 'pageerror', (e && e.message) + ' @' + (e && e.filename || '') + ':' + (e && e.lineno || '')); });
+  window.addEventListener('unhandledrejection', function (e) { rec(errors, 'rejection', (e && e.reason && e.reason.message) || (e && e.reason) || 'promise'); });
+  var origErr = console.error;
+  console.error = function () { rec(errors, 'console', Array.prototype.map.call(arguments, String).join(' ')); origErr.apply(console, arguments); };
+
+  function step(ok, msg) {
+    steps.push({ ok: !!ok, msg: msg });
+    var div = document.createElement('div');
+    div.className = ok ? 'ok' : 'fail';
+    div.textContent = (ok ? 'OK  ' : 'FAIL ') + msg;
+    document.getElementById('audit-list').appendChild(div);
+  }
+  function $(s, r) { return (r || document).querySelector(s); }
+  function $$(s, r) { return Array.prototype.slice.call((r || document).querySelectorAll(s)); }
+  function wait(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+  function btn(txt, r) {
+    return $$('button', r || document).find(function (b) { return (b.textContent || '').indexOf(txt) !== -1 && !b.disabled; });
+  }
+  function finish() {
+    var payload = { steps: steps, errors: errors };
+    var b64 = btoa(unescape(encodeURIComponent(JSON.stringify(payload))));
+    document.getElementById('audit-out').textContent = b64;
+  }
+
+  /* responde la pregunta visible y pulsa Continuar;
+     devuelve 'att' (acierto -> panel de accion), 'sig' (fallo -> siguiente turno)
+     o 'none' (Continuar no avanzo) */
+  async function answerContinue(host) {
+    var opts = $$('.opt-btn', host).filter(function (b) { return !b.disabled; });
+    if (!opts.length) return 'none';
+    opts[0].click();
+    await wait(250);
+    var cont = btn('Continuar', host);
+    if (!cont) return 'none';
+    cont.click();
+    await wait(650);
+    if (host.querySelector('#ba-att')) return 'att';
+    if ((host.textContent || '').indexOf('Siguiente turno') !== -1) return 'sig';
+    return 'none';
+  }
+
+  /* avanza tras una respuesta: si toca panel, ataca; si toca fallo, pasa turno.
+     devuelve true si aparece una pregunta nueva */
+  async function advance(host) {
+    var att = host.querySelector('#ba-att');
+    if (att) { att.click(); await wait(1500); }
+    var sig = btn('Siguiente turno', host);
+    if (sig) { sig.click(); await wait(600); }
+    return $$('.opt-btn', host).filter(function (b) { return !b.disabled; }).length === 4;
+  }
+
+  (async function run() {
+    var profe = App.storage.getUsers().find(function (u) { return u.rol === 'docente'; });
+    App.storage.setKey('currentUser', profe.id);
+    window.App.boot();
+    await wait(200);
+    step(!!App.auth.who() && App.auth.isDocente(), 'setup: docente logueado');
+
+    var studs = App.storage.getPlayers().filter(function (p) { return p.rol !== 'docente'; });
+    var course = App.storage.getCourses()[0];
+    step(studs.length >= 2, 'setup: hay ' + studs.length + ' participantes');
+
+    async function launch(playerIds, tag, extra) {
+      var host = document.getElementById('gamehost');
+      host.innerHTML = '';
+      var box = document.createElement('div');
+      box.id = 'batalla-' + tag;
+      host.appendChild(box);
+      var opts = {
+        container: box, mode: 'batalla', courseId: course.id,
+        categoryId: '', difficultyId: '', timeSeconds: 300, playerIds: playerIds
+      };
+      Object.keys(extra || {}).forEach(function (k) { opts[k] = extra[k]; });
+      App.launchGame(opts);
+      await wait(450);
+      return box;
+    }
+
+    /* ---- A: acierto -> panel Atacar -> siguiente pregunta ---- */
+    try {
+      var hostA = await launch([studs[0].id, studs[1].id], 'A');
+      var optsA = $$('.opt-btn', hostA);
+      step(optsA.length === 4, 'A: pregunta renderiza (' + optsA.length + ' opciones)');
+      var rA = await answerContinue(hostA);
+      step(rA === 'att', 'A: "Continuar" en acierto abre el panel de accion (' + rA + ')');
+      if (rA === 'att') {
+        var sigA = await advance(hostA);
+        step(sigA, 'A: tras atacar viene la siguiente pregunta');
+      }
+    } catch (e) { step(false, 'A: excepción ' + e.message); rec(errors, 'console', 'A: ' + e.message); }
+
+    /* ---- B: participante sin ficha en players (id fantasma del lobby) ----
+       el turno 0 pertenece al equipo real; el turno 1 pasa al equipo con
+       el participante fantasma, cuyo registro no existe en players. */
+    try {
+      var hostB = await launch([studs[0].id, 'id_fantasma_' + Date.now()], 'B');
+      var rB1 = await answerContinue(hostB);
+      step(rB1 !== 'none', 'B: turno 0 (equipo real) avanza con Continuar (' + rB1 + ')');
+      var nuevaB = await advance(hostB);
+      step(nuevaB, 'B: se llega al turno del equipo con el participante fantasma');
+      if (nuevaB) {
+        var rB2 = await answerContinue(hostB);
+        step(rB2 !== 'none',
+          'B: "Continuar" avanza en el turno del participante sin ficha (' + rB2 + ')');
+        if (rB2 !== 'none') {
+          var sigB = await advance(hostB);
+          step(sigB, 'B: el partido sigue tras ese turno');
+        }
+      }
+    } catch (e) { step(false, 'B: excepción ' + e.message); rec(errors, 'console', 'B: ' + e.message); }
+
+    /* ---- C: respuesta incorrecta -> Siguiente turno ---- */
+    try {
+      var hostD = null, rD = 'none';
+      for (var k = 0; k < 4 && rD === 'none'; k++) {
+        hostD = await launch([studs[0].id, studs[1].id], 'D' + k);
+        var optsD = $$('.opt-btn', hostD);
+        if (!optsD.length) break;
+        optsD[k % optsD.length].click();
+        await wait(250);
+        var clicked = $$('.opt-btn', hostD)[k % optsD.length];
+        if (clicked && clicked.classList.contains('opt-wrong')) {
+          var contD = btn('Continuar', hostD);
+          step(!!contD, 'D: "Continuar" visible tras fallar');
+          if (contD) { contD.click(); await wait(650); }
+          rD = (hostD.textContent || '').indexOf('Siguiente turno') !== -1 ? 'sig' : 'none';
+        } else {
+          rD = 'none'; /* toco la correcta: se reintenta con otra opcion */
+        }
+      }
+      step(rD === 'sig', 'D: tras fallar aparece "Siguiente turno" (' + rD + ')');
+      if (rD === 'sig') {
+        var nuevaD = await advance(hostD);
+        step(nuevaD, 'D: "Siguiente turno" muestra la nueva pregunta');
+      }
+    } catch (e) { step(false, 'D: excepción ' + e.message); rec(errors, 'console', 'D: ' + e.message); }
+
+    /* ---- C: cada participante tiene SU barra minimalista ---- */
+    try {
+      var ids4 = studs.slice(0, 4).map(function (p) { return p.id; });
+      var hostC = await launch(ids4, 'C');
+      var fighters = $$('.ba-fighter', hostC);
+      var conBarra = fighters.filter(function (f) { return f.querySelectorAll('.ba-hpbox').length === 1; });
+      step(fighters.length === 2 && conBarra.length === fighters.length,
+        'C: cada peleador tiene exactamente su propia barra (' + conBarra.length + '/' + fighters.length + ')');
+      var nBoxes = $$('.ba-hpbox', hostC).length;
+      step(nBoxes === 2, 'C: hay 2 barras flotantes en total (' + nBoxes + ')');
+
+      var bar = hostC.querySelector('.ba-hpbox-bar');
+      var hBar = bar ? Math.round(bar.getBoundingClientRect().height) : 0;
+      step(hBar > 0 && hBar <= 12, 'C: barra flotante minimalista (alto ' + hBar + 'px, antes 16+)');
+
+      var filas = $$('.ba-roster .ba-hp-row', hostC);
+      step(filas.length === ids4.length,
+        'C: barra por participante en el marcador (' + filas.length + '/' + ids4.length + ')');
+      var conFill = filas.filter(function (f) {
+        var i = f.querySelector('.ba-hp-track i');
+        return i && /%$/.test(i.style.width || '100%');
+      });
+      step(filas.length > 0 && conFill.length === filas.length,
+        'C: cada fila muestra su relleno de vida (' + conFill.length + '/' + filas.length + ')');
+      var nombres = filas.map(function (f) { var n = f.querySelector('.ba-hp-name'); return n ? n.textContent : ''; });
+      var idsOk = ids4.every(function (id) {
+        var pr = App.storage.getById('players', id);
+        return pr && nombres.indexOf(pr.nombre) !== -1;
+      });
+      step(idsOk, 'C: cada fila nombra a su participante');
+    } catch (e) { step(false, 'C: excepción ' + e.message); rec(errors, 'console', 'C: ' + e.message); }
+
+    /* ---- E: el tiempo termina con la pregunta abierta ---- */
+    try {
+      var hostE = await launch([studs[0].id, studs[1].id], 'E', { timeSeconds: 2 });
+      await wait(3200);
+      var optsE = $$('.opt-btn', hostE);
+      if (optsE.length) {
+        optsE[0].click();
+        await wait(250);
+        var contE = btn('Continuar', hostE);
+        if (contE) { contE.click(); await wait(650); }
+      }
+      step(!hostE.querySelector('.q-card'),
+        'E: tras el fin del tiempo no queda una pregunta muerta (Continuar resuelto)');
+      step(!!hostE.querySelector('.podium, .podio, #podium') || (hostE.textContent || '').indexOf('agotado') !== -1 || (hostE.textContent || '').indexOf('gana') !== -1,
+        'E: el podium de fin de tiempo esta visible');
+    } catch (e) { step(false, 'E: excepción ' + e.message); rec(errors, 'console', 'E: ' + e.message); }
+
+    finish();
+  })().catch(function (e) {
+    rec(errors, 'fatal', (e && e.message) || String(e));
+    finish();
+  });
+})();
+</script>
+</body>
+</html>

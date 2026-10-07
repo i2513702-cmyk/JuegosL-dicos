@@ -17,8 +17,10 @@ App.games.conquista = (function (ui) {
       categoryId: config.categoryId,
       difficultyId: config.difficultyId
     });
-    const ROWS = config.rows || 6;
-    const COLS = config.cols || 6;
+    /* la retícula del SVG terreno-de-conquista.svg es 8x8 (ver SCENE abajo);
+       6x6 dejaba las columnas/filas derechas del tablero sin parcelas */
+    const ROWS = config.rows || 8;
+    const COLS = config.cols || 8;
     const TOTAL = ROWS * COLS;
     const MAJORITY = Math.floor(TOTAL / 2) + 1;
     const colors = ['rojo', 'verde', 'azul', 'amarillo'];
@@ -50,7 +52,8 @@ App.games.conquista = (function (ui) {
 const SCENE = { W: 680, H: 380, BOARD_X: 40, BOARD_Y: 20, CELL_W: 75, CELL_H: 42.5 };
 
 const mapEl = ui.el('div', 'cq-map', '');
-if (config.escenaCapa) {
+const inScene = !!config.escenaCapa;
+if (inScene) {
   config.escenaCapa.appendChild(mapEl);   /* las parcelas viven DENTRO de la imagen */
 } else {
   mapEl.style.position = 'relative';
@@ -59,6 +62,7 @@ if (config.escenaCapa) {
   mapEl.style.display = 'grid';
   mapEl.style.gap = '6px';
   mapEl.style.gridTemplateColumns = 'repeat(' + COLS + ', 1fr)';
+  mapEl.style.gridTemplateRows = 'repeat(' + ROWS + ', 1fr)';
   root.appendChild(mapEl);
 }
 
@@ -84,12 +88,19 @@ if (config.escenaCapa) {
       mapEl.innerHTML = '';
       zones.forEach((z, idx) => {
         const btn = ui.el('button', 'cq-zone' + (z.owner === null ? ' cq-neutral' : ''), '');
-        /* la parcela se alinea con la retícula del SVG (tablero 40..640 x 20..360
-           en un lienzo de 680x380), en % para que escale en celular */
-        btn.style.left = (SCENE.BOARD_X + z.c * SCENE.CELL_W) / SCENE.W * 100 + '%';
-        btn.style.top = (SCENE.BOARD_Y + z.r * SCENE.CELL_H) / SCENE.H * 100 + '%';
-        btn.style.width = SCENE.CELL_W / SCENE.W * 100 + '%';
-        btn.style.height = SCENE.CELL_H / SCENE.H * 100 + '%';
+        if (inScene) {
+          /* la parcela se alinea con la retícula del SVG (tablero 40..640 x 20..360
+             en un lienzo de 680x380), en % para que escale en celular */
+          btn.style.left = (SCENE.BOARD_X + z.c * SCENE.CELL_W) / SCENE.W * 100 + '%';
+          btn.style.top = (SCENE.BOARD_Y + z.r * SCENE.CELL_H) / SCENE.H * 100 + '%';
+          btn.style.width = SCENE.CELL_W / SCENE.W * 100 + '%';
+          btn.style.height = SCENE.CELL_H / SCENE.H * 100 + '%';
+        } else {
+          /* sin escenario: las celdas las mide la retícula CSS del grid */
+          btn.style.position = 'static';
+          btn.style.width = '100%';
+          btn.style.height = '100%';
+        }
         if (z.owner === null) {
           btn.appendChild(ui.el('span', 'cq-flag', '🌫️'));
         } else {

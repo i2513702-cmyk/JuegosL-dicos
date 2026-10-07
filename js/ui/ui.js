@@ -166,9 +166,20 @@ App.ui = (function () {
       card.appendChild(fb);
 
       const cont = el('button', 'btn-primary w-full mt-3', 'Continuar →');
+      let contBusy = false;
       cont.addEventListener('click', () => {
+        if (contBusy) return;
+        contBusy = true;
+        cont.classList.add('opacity-60');
         setTimeout(() => {
-          opts.onAnswered && opts.onAnswered({ correct: correct, selectedIndex: i, question: q });
+          try {
+            opts.onAnswered && opts.onAnswered({ correct: correct, selectedIndex: i, question: q });
+          } catch (e) {
+            console.error(e);
+            contBusy = false;
+            cont.classList.remove('opacity-60');
+            App.ui.toast('⚠️ No se pudo continuar: ' + e.message, 'error');
+          }
         }, 0);
       });
       card.appendChild(cont);
