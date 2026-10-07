@@ -1,0 +1,102 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Auditoría de index.html real</title>
+</head>
+<body class="bg-slate-100">
+<!-- carga la app real en un iframe same-origin para capturar sus errores -->
+<iframe id="fr" src="../index.html" style="width:1200px;height:820px;border:0"></iframe>
+<pre id="audit-out"></pre>
+<script>
+(function () {
+  const steps = [], errors = [];
+  const fr = document.getElementById('fr');
+  const base = (window.BASE_URL || '') + '../index.html';
+  function wait(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+  function step(ok, msg) { steps.push({ ok: !!ok, msg: msg }); }
+  function rec(type, text) {
+    text = String(text || '').slice(0, 240);
+    const last = errors[errors.length - 1];
+    if (last && last.type === type && last.text === text) last.n++;
+    else errors.push({ type: type, text: text, n: 1 });
+  }
+  function $$q(sel, root) { return Array.prototype.slice.call((root || document).querySelectorAll(sel)); }
+  function byText(sel, txt, root) {
+    return $$q(sel, root).find(function (b) { return (b.textContent || '').trim() === txt; });
+  }
+
+  async function boot() {
+    for (let i = 0; i < 80 && !fr.contentWindow; i++) await wait(50);
+    const w = fr.contentWindow;
+    w.addEventListener('error', function (e) { rec('error', e.message + ' @ ' + (e.filename || '').split('/').pop() + ':' + e.lineno); });
+    w.addEventListener('unhandledrejection', function (e) { rec('unhandledrejection', e.reason && e.reason.message); });
+    try {
+      const c = w.console;
+      const oe = c.error.bind(c);
+      c.error = function () { rec('console.error', Array.prototype.map.call(arguments, String).join(' ')); oe.apply(null, arguments); };
+    } catch (_) {}
+
+    await new Promise(function (r) { fr.addEventListener('load', r, { once: true }); });
+    await wait(700);
+
+    const doc = fr.contentDocument;
+    step(!!w.App && !!w.App.storage, 'index.html real: App.storage disponible');
+    step(!!w.App && !!w.App.gamekit, 'index.html real: App.gamekit definido');
+    /* el bug que tumbaba los juegos: gamekit capturaba App.ui antes de que existiera */
+    step(!!w.App && !!w.App.gamekit && !!w.App.ui && !!w.App.gamekit.timerBox, 'orden de scripts OK (App.ui existe antes de usar gamekit)');
+    step(!!(doc.body.textContent || '').includes('Iniciar sesión'), 'index.html real: pantalla de login visible');
+    step($$q('script[src]', doc).length > 0, 'index.html real: ' + $$q('script[src]', doc).length + ' scripts cargados');
+
+    /* los 4 juegos deben existir y ser invocables */
+    ['ludo', 'batalla', 'carrera', 'conquista'].forEach(function (m) {
+      step(!!w.App && !!w.App.games && !!w.App.games[m] && typeof w.App.games[m].init === 'function',
+        'index.html real: App.games.' + m + ' con init()');
+    });
+
+    /* estado limpio: la fase 1 dejó sesión en el servidor compartido */
+    w.App.storage.setKey('currentUser', '');
+    step(!w.App.auth.who(), 'index.html real: sin usuario tras limpiar la sesión');
+
+    /* login real por formulario dentro del iframe (DOM real de app.js) */
+    const doc2 = fr.contentDocument;
+    const rol = $$q('button', doc2).find(function (b) { return (b.textContent || '').indexOf('Docente') !== -1; });
+    step(!!rol, 'index.html real: botón de rol Docente');
+    if (rol) { rol.click(); await wait(150); }
+
+    const sel = doc2.querySelector('select');
+    const clave = doc2.querySelector('input.ffield[type="password"]');
+    const entrar = $$q('button', doc2).find(function (b) { return (b.textContent || '').indexOf('Ingresar') !== -1; });
+    step(!!sel && !!clave && !!entrar, 'index.html real: formulario de login localizado');
+    const opts = sel ? $$q('option', sel).map(function (o) { return o.value; }) : [];
+    step(opts.length > 0, 'index.html real: ' + opts.length + ' cuentas docente en el selector');
+    if (sel) {
+      sel.value = opts[0];
+      sel.dispatchEvent(new fr.contentWindow.Event('change', { bubbles: true }));
+    }
+    if (clave) clave.value = '1234';
+    if (entrar) { entrar.click(); await wait(700); }
+
+    const w2 = fr.contentWindow;
+    const u = w2.App && w2.App.auth ? w2.App.auth.who() : null;
+    step(!!u, 'index.html real: login docente funciona sin servidor' + (u ? ' (' + (u.nombre || u.usuario) + ')' : ''));
+    step(!!(fr.contentDocument.body.textContent || '').includes('Crear sala')
+      || !!(fr.contentDocument.location.hash || '').indexOf('docente') !== -1
+      || !!(fr.contentDocument.body.textContent || '').includes('Unirse a la partida'),
+      'index.html real: entra al panel tras iniciar sesión');
+    step(errors.length === 0, 'index.html real: 0 errores JS durante el arranque' + (errors.length ? ' (' + errors.length + ')' : ''));
+  }
+
+  boot().then(function () {
+    document.getElementById('audit-out').textContent =
+      btoa(unescape(encodeURIComponent(JSON.stringify({ steps: steps, errors: errors }))));
+  }).catch(function (e) {
+    document.getElementById('audit-out').textContent =
+      btoa(unescape(encodeURIComponent(JSON.stringify({
+        steps: steps, errors: [{ type: 'runner', text: e.message, n: 1 }]
+      }))));
+  });
+})();
+</script>
+</body>
+</html>

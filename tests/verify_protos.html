@@ -1,0 +1,117 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<title>Verificación de prototipos (motor de sprites + escenarios)</title>
+<style>body{font-family:sans-serif;background:#111;color:#eee}iframe{width:760px;height:560px;border:0}</style>
+</head>
+<body>
+<pre id="audit-out">pending</pre>
+<script>
+(function () {
+  const steps = [], errors = [];
+  const PROTOS = [
+    { file: 'avatares/avatares-guerreros.html', svg: false, name: 'galeria' },
+    { file: 'avatares/torneo-guerreros.html',    svg: 'campo-de-batalla.svg', name: 'torneo (batalla)' },
+    { file: 'avatares/ludo-avatares.html',       svg: false, name: 'ludo' },
+    { file: 'avatares/carrera-avatares.html',    svg: 'pista-de-carreras.svg', name: 'carrera' },
+    { file: 'avatares/conquista-avatares.html',  svg: 'terreno-de-conquista.svg', name: 'conquista' }
+  ];
+  function step(ok, msg) { steps.push({ ok: !!ok, msg: msg }); }
+  function rec(type, text) {
+    text = String(text || '').slice(0, 200);
+    const last = errors[errors.length - 1];
+    if (last && last.type === type && last.text === text) last.n++;
+    else errors.push({ type: type, text: text, n: 1 });
+  }
+  function wait(ms) { return new Promise(function (r) { setTimeout(r, ms); }); }
+
+  /* cuenta pixeles dibujados por el canvas (los sprites van por encima del SVG) */
+  function paintedPixels(cv) {
+    try {
+      const d = cv.getContext('2d').getImageData(0, 0, cv.width, cv.height).data;
+      let n = 0;
+      for (let i = 3; i < d.length; i += 4) if (d[i] > 0) n++;
+      return n;
+    } catch (e) { return -1; }
+  }
+
+  async function check(p) {
+    const fr = document.createElement('iframe');
+    fr.src = '../' + p.file;
+    document.body.appendChild(fr);
+    await new Promise(function (r) { fr.addEventListener('load', r, { once: true }); });
+    const w = fr.contentWindow, doc = fr.contentDocument;
+    w.addEventListener('error', function (e) { rec(p.name, e.message); });
+    w.addEventListener('unhandledrejection', function (e) { rec(p.name, e.reason && e.reason.message); });
+    await wait(2200);
+
+    /* 1. el motor compartido se cargo y se uso */
+    const M = w.Motor;
+    step(!!M && M.CHARACTERS.length === 5, p.name + ': motor-sprites.js cargado con 5 avatares');
+    step(!!doc.querySelector('canvas'), p.name + ': tiene canvas');
+
+    /* 2. los sprites se dibujan (pixeles con alpha sobre el fondo) */
+    const cv = doc.querySelector('canvas');
+    if (cv) {
+      const n = paintedPixels(cv);
+      step(n > 500, p.name + ': sprites dibujados (' + n + ' px)');
+    }
+
+    /* 3. escenario SVG */
+    const img = doc.querySelector('img.escenario');
+    if (p.svg) {
+      step(!!img, p.name + ': escenario ' + p.svg + ' presente');
+      if (img) {
+        const ok = img.complete && img.naturalWidth === 680 && img.naturalHeight === 380;
+        step(ok, p.name + ': SVG cargado 680x380 (natural ' + img.naturalWidth + 'x' + img.naturalHeight + ')');
+        const st = img.closest('.stage');
+        if (st) {
+          const r = st.getBoundingClientRect();
+          const ratio = r.width / r.height;
+          step(Math.abs(ratio - 680 / 380) < 0.02,
+            p.name + ': proporcion 680:380 respetada (ratio ' + ratio.toFixed(3) + ')');
+          /* el escenario no debe tapar el canvas con los sprites */
+          const zi = getComputedStyle(img).zIndex, zc = getComputedStyle(cv).zIndex;
+          step(Number(zi) < Number(zc), p.name + ': escenario detras de los sprites (z ' + zi + ' < ' + zc + ')');
+        }
+        /* el canvas es transparente: el SVG se ve detras */
+        step(getComputedStyle(cv).backgroundColor === 'rgba(0, 0, 0, 0)',
+          p.name + ': canvas transparente (fondo SVG visible)');
+      }
+    } else {
+      step(!img, p.name + ': sin escenario (correcto: no hay SVG para este modo)');
+    }
+
+    /* 4. el HUD no queda tapado: los controles siguen visibles y utilizables */
+    const btn = doc.querySelector('button');
+    step(!!btn && btn.getBoundingClientRect().height > 0, p.name + ': boton de reinicio visible (HUD accesible)');
+
+    /* 5. responsive: el escenario se estrecha sin deformarse */
+    if (p.svg) {
+      const st = doc.querySelector('.stage');
+      doc.documentElement.style.width = '380px';
+      await wait(300);
+      if (st) {
+        const r = st.getBoundingClientRect();
+        step(Math.abs(r.width / r.height - 680 / 380) < 0.03,
+          p.name + ': responsive 380px mantiene ratio (' + (r.width / r.height).toFixed(3) + ')');
+      }
+      doc.documentElement.style.width = '';
+    }
+    fr.remove();
+  }
+
+  (async function () {
+    for (let i = 0; i < PROTOS.length; i++) {
+      try { await check(PROTOS[i]); }
+      catch (e) { step(false, PROTOS[i].name + ': excepcion ' + e.message); rec(PROTOS[i].name, e.message); }
+    }
+    step(errors.length === 0, 'sin errores JS en los 5 prototipos' + (errors.length ? ' (' + errors.length + ')' : ''));
+    document.getElementById('audit-out').textContent =
+      btoa(unescape(encodeURIComponent(JSON.stringify({ steps: steps, errors: errors }))));
+  })();
+})();
+</script>
+</body>
+</html>

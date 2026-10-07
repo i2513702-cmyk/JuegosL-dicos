@@ -441,9 +441,9 @@ select.ffield, select { cursor: pointer; }
 .track-cells { display: grid; grid-template-columns: repeat(6, 1fr); gap: 2px; }
 .tr-cell {
   height: 42px; display: flex; align-items: center; justify-content: center;
-  background: #eef2ff; border-radius: 8px; font-size: .72rem; font-weight: 700; color: #4338ca;
+  background: rgba(238,242,255,.75); border-radius: 8px; font-size: .72rem; font-weight: 700; color: #4338ca;
 }
-.tr-cell-obs { background: #fecaca; color: #9f1239; }
+.tr-cell-obs { background: rgba(254,202,202,.78); color: #9f1239; }
 .tr-meta { display: flex; align-items: center; justify-content: center; font-size: 1.2rem; }
 .track-tokens { position: absolute; left: 0; right: 0; top: 0; height: 112px; pointer-events: none; }
 .tr-token {
@@ -458,17 +458,59 @@ select.ffield, select { cursor: pointer; }
 }
 .fin-title { text-align: center; font-size: 1.3rem; font-weight: 800; margin: 14px 0 4px; }
 
-/* ------------------------------- CONQUISTA ------------------------------- */
-.cq-map { display: grid; grid-template-columns: repeat(var(--cq-cols, 6), 1fr); gap: 6px; margin: 10px auto 0; max-width: 620px; }
-.cq-zone {
-  aspect-ratio: 6/4; border: none; border-radius: 8px; cursor: pointer;
-  display: flex; align-items: center; justify-content: center; gap: 4px; flex-direction: column;
-  font-size: .8rem; transition: transform .15s, box-shadow .15s;
+/* ------------------------------- ESCENA ------------------------------- */
+/* La imagen estatica ES el tablero: caja exacta de 680x380 (nunca deformada)
+   y el juego se dibuja dentro, en coordenadas de la escena. */
+.escena {
+  position: relative; width: 100%; max-width: 680px; margin: 8px auto 12px;
+  aspect-ratio: 680 / 380; border-radius: 14px; overflow: hidden;
+  background: #2f3a2a; box-shadow: 0 8px 18px rgba(15,23,42,.18);
 }
-.cq-zone:hover { transform: scale(1.05); box-shadow: 0 4px 10px rgba(15,23,42,.2); }
-.cq-neutral { background: #e2e8f0; color: #475569; }
+.escena > img.escenario-capa {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  object-fit: cover; z-index: 0; pointer-events: none; display: block;
+}
+/* capa de juego: los avatares y fichas viven DENTRO de la imagen */
+.escena-capa { position: absolute; inset: 0; z-index: 1; }
+/* el tablero de Ludo es cuadrado: se ve mas grande en celular */
+.escena.escena-cuadrada { max-width: 420px; }
+/* version antigua: la imagen detras de todo el contenido del modo */
+.escenario-capa {
+  position: absolute; inset: 0; width: auto; height: auto;
+  object-fit: contain; object-position: center top; z-index: -1;
+  pointer-events: none; border-radius: 14px;
+}
+/* las parcelas se posicionan sobre la retícula que ya trae el SVG:
+   tablero de x=40 a 640 e y=20 a 360 en un lienzo de 680x380 (8x8 celdas) */
+.cq-map { position: absolute; inset: 0; margin: 0; }
+.cq-zone {
+  position: absolute; border: none; background: none; padding: 0; cursor: pointer;
+  display: flex; align-items: center; justify-content: center; gap: 2px; flex-direction: column;
+  font-size: .6rem; color: #eef7ee; transition: transform .15s, box-shadow .15s;
+  border-radius: 6px; text-shadow: 0 1px 2px rgba(0,0,0,.75);
+}
+.cq-zone:hover { transform: scale(1.06); box-shadow: 0 0 0 3px #f59e0b; }
+.cq-neutral { background: rgba(255,255,255,.10); color: #d7e3d7; }
 .cq-target { box-shadow: 0 0 0 3px #f59e0b, 0 4px 10px rgba(15,23,42,.2); transform: scale(1.06); }
-.cq-flag { font-size: .9rem; }
+.cq-flag { font-size: .85rem; opacity: .75; }
+.cq-zone .avatar-canvas { display: block; margin: 0 auto; filter: drop-shadow(0 2px 2px rgba(0,0,0,.55)); }
+
+/* ---------------- MOVIL: escenario y area de juego ---------------- */
+@media (max-width: 640px) {
+  /* el escenario se mantiene en 680:380 y se reduce sin deformar */
+  .escenario-capa { object-fit: contain; }
+  .cq-map { max-width: 100%; gap: 4px; }
+  .cq-zone { font-size: .68rem; border-radius: 6px; }
+  .track-wrap { padding-top: 26px; }
+  .tr-cell { height: 34px; font-size: .62rem; }
+  .track-tokens { height: 90px; }
+  .tr-token { min-width: 17px; height: 17px; font-size: .6rem; }
+  .ba-arena { gap: 6px; }
+  .ba-canvas { max-width: 118px; }
+  /* tarjetas y botones al ancho de la pantalla, sin scroll horizontal */
+  .fin-row, .ba-fighter, .panel, .card { max-width: 100%; }
+  .q-card { padding: 12px; }
+}
 
 /* ------------------------------- BATALLA ------------------------------- */
 .ba-shield {
@@ -497,16 +539,130 @@ select.ffield, select { cursor: pointer; }
 .ba-arena { display: flex; align-items: center; justify-content: center; gap: 10px; margin: 12px auto 14px; max-width: 720px; }
 .ba-fighter { flex: 1; display: flex; flex-direction: column; align-items: center; gap: 6px; min-width: 0; }
 .ba-canvas {
-  border-radius: 18px; width: 100%; max-width: 160px; height: auto;
-  background: radial-gradient(circle at 50% 28%, #f8fafc, #eef2ff 70%, #e2e8f0);
-  box-shadow: 0 8px 18px rgba(15,23,42,.18), inset 0 0 0 2px #e2e8f0;
+   border-radius: 18px; width: 100%; max-width: 160px; height: auto;
+   background: radial-gradient(circle at 50% 28%, rgba(248,250,252,.82), rgba(238,242,255,.78) 70%, rgba(226,232,240,.8));
+   box-shadow: 0 8px 18px rgba(15,23,42,.18), inset 0 0 0 2px rgba(226,232,240,.9);
 }
 .ba-vs { font-weight: 900; color: #7c3aed; font-size: 1.1rem; text-align: center; line-height: 1.2; }
+
+/* Ludo: el tablero es la imagen del SVG, solo las fichas van encima */
+.l-en-escena { position: absolute; inset: 0; max-width: none; margin: 0; padding: 0; background: none; border-radius: 0; box-shadow: none; }
+.l-en-escena .ludo-grid { display: none; }
+.l-en-escena .ludo-tokens { top: 0; left: 0; right: 0; bottom: 0; }
+.l-en-escena .l-token { width: 7.2%; height: auto; background: none; box-shadow: none; }
+.l-en-escena .l-token::after { display: none; }
+.l-en-escena .l-token canvas {
+  display: block; width: 100%; height: auto; border-radius: 0; background: none;
+  box-shadow: 0 2px 3px rgba(0,0,0,.55);
+}
+
+/* --------------- COMPONENTES DENTRO DE LA ESCENA --------------- */
+/* Batalla: los peleadores se plantan sobre las plataformas del SVG
+   (suelo en y~215 de 380) y el avatar va sin marco ni fondo de tarjeta. */
+.ba-en-escena { position: absolute; inset: 0; display: block; margin: 0; max-width: none; }
+.ba-en-escena .ba-fighter {
+  position: absolute; bottom: 38%; display: flex; flex-direction: column;
+  align-items: center; gap: 2px; transform: translateX(-50%); width: 26%;
+}
+.ba-en-escena .ba-fighter:first-child { left: 13%; }
+.ba-en-escena .ba-fighter:last-child { left: 87%; }
+.ba-en-escena .ba-canvas {
+  width: 100%; max-width: none; height: auto; background: none;
+  border-radius: 0; box-shadow: none; filter: drop-shadow(0 6px 4px rgba(15,23,42,.45));
+}
+.ba-en-escena .ba-vs {
+  position: absolute; left: 50%; top: 44%; transform: translate(-50%, -50%);
+  font-size: 1rem; color: #fff; text-shadow: 0 2px 4px rgba(15,23,42,.8);
+}
+.ba-en-escena .ba-pose { font-size: .62rem; padding: 2px 9px; background: rgba(15,23,42,.6); color: #fff; border-color: transparent; }
+.ba-en-escena .ba-pose-active { color: #fff; border-color: transparent; }
+#ba-pose-a.ba-pose-active { background: #dc2626; }
+#ba-pose-b.ba-pose-active { background: #2563eb; }
+
+/* Barra de vida pixelada flotante sobre la cabeza del avatar */
+.ba-hpbox {
+  position: absolute; left: 50%; bottom: 100%; transform: translate(-50%, -6px);
+  width: 118%; pointer-events: none; z-index: 6;
+  display: flex; flex-direction: column; align-items: center; gap: 2px;
+}
+.ba-hpbox-name {
+  font: 700 10px/1 ui-monospace, 'Courier New', monospace;
+  color: #fff; text-shadow: 0 2px 0 rgba(15,23,42,.9);
+  max-width: 100%; overflow: hidden; white-space: nowrap; text-overflow: ellipsis;
+}
+.ba-hpbox-bar {
+  position: relative; width: 100%; height: 16px;
+  background: #111827; border: 3px solid #0b1220;
+  box-shadow: 0 0 0 2px rgba(255,255,255,.85), 0 4px 0 rgba(2,6,23,.55);
+  image-rendering: pixelated; overflow: hidden;
+}
+.ba-hpbox-bar::after {
+  /* textura pixelada: celdas cuadradas sobre la barra */
+  content: ''; position: absolute; inset: 0; pointer-events: none;
+  background:
+    repeating-linear-gradient(90deg, rgba(0,0,0,.35) 0 3px, rgba(0,0,0,0) 3px 6px),
+    linear-gradient(rgba(255,255,255,.28) 0 50%, rgba(0,0,0,.22) 50% 100%);
+}
+.ba-hpbox-fill {
+  position: absolute; inset: 0 auto 0 0; width: 100%;
+  background: repeating-linear-gradient(90deg, #22c55e 0 6px, #16a34a 6px 12px);
+  transition: width .35s steps(8, end);
+}
+.ba-hpbox-pct {
+  position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  font: 700 9px/1 ui-monospace, 'Courier New', monospace; letter-spacing: .5px;
+  color: #fff; text-shadow: 1px 1px 0 #000, -1px 1px 0 #000, 1px -1px 0 #000, -1px -1px 0 #000;
+  z-index: 2;
+}
+.ba-hpbox-turn .ba-hpbox-bar { box-shadow: 0 0 0 3px #fbbf24, 0 4px 0 rgba(2,6,23,.55); }
+.ba-hpbox-turn .ba-hpbox-name { color: #fde68a; }
+.ba-hpbox-mid .ba-hpbox-fill { background: repeating-linear-gradient(90deg, #fbbf24 0 6px, #d97706 6px 12px); }
+.ba-hpbox-low .ba-hpbox-fill { background: repeating-linear-gradient(90deg, #f87171 0 6px, #dc2626 6px 12px); }
+.ba-hpbox-low { animation: hpBlink .7s steps(2, end) infinite; }
+.ba-hpbox-shield .ba-hpbox-bar { box-shadow: 0 0 0 2px #a5b4fc, 0 0 12px rgba(99,102,241,.9); }
+@keyframes hpBlink { 50% { opacity: .55; } }
+@keyframes hpHeal {
+  0% { filter: brightness(2.2) saturate(.4); transform: translate(-50%, -6px) scale(1); }
+  40% { transform: translate(-50%, -12px) scale(1.07); }
+  100% { filter: none; transform: translate(-50%, -6px) scale(1); }
+}
+.ba-hpbox-heal { animation: hpHeal .9s steps(6, end); }
+.ft-heal { color: #16a34a; font-weight: 800; }
+
+/* Carrera: los pilotos van sobre el asfalto (mitad inferior del SVG) */
+.tr-en-escena { position: absolute; left: 0; right: 0; top: 50%; bottom: 0; max-width: none; padding-top: 0; margin: 0; }
+.tr-en-escena .track-tokens { top: 0; height: 100%; }
+.tr-en-escena .tr-obs {
+  position: absolute; transform: translate(-50%, -50%); width: 14px; height: 14px;
+  font-size: .75rem; line-height: 14px; text-align: center;
+  filter: drop-shadow(0 1px 2px rgba(15,23,42,.6));
+}
+.tr-en-escena .tr-token { transition: left .22s, top .22s; }
+/* pilotos mas grandes sobre el asfalto: el avance se ve a simple vista.
+   OJO: el porcentaje va en el token (su ancho si es definitivo); si se
+   pusiera en el canvas se resolveria contra el token y quedaria diminuto. */
+.tr-en-escena .tr-token.tr-token-avatar { width: 11%; min-width: 0; }
+.tr-en-escena .tr-token.tr-token-avatar canvas { width: 100%; height: auto; display: block; }
+.tr-token.tr-finish canvas { filter: drop-shadow(0 0 8px rgba(253,224,71,.95)); }
+.tr-flag {
+  position: absolute; left: 50%; top: -14px; transform: translateX(-50%);
+  font-size: .95rem; line-height: 1; animation: flagPop .45s steps(4, end);
+}
+@keyframes flagPop { from { transform: translateX(-50%) scale(0) rotate(-40deg); } }
+.tr-run.tr-token-avatar canvas { animation: runBounce .12s linear infinite; }
+
+.cq-zone { transition: transform .15s, box-shadow .15s; }
+
+@media (max-width: 480px) {
+  .ba-en-escena .ba-vs { font-size: .8rem; }
+  .tr-en-escena .tr-obs { font-size: .7rem; }
+}
 .ba-pose { font-size: .75rem; font-weight: 700; color: #64748b; background: #fff; border: 1px solid var(--line); border-radius: 999px; padding: 3px 12px; transition: all .15s; }
 .ba-pose-active { color: #fff; border-color: transparent; }
 #ba-pose-a.ba-pose-active { background: #dc2626; }
 #ba-pose-b.ba-pose-active { background: #2563eb; }
 .skill-btn:active { transform: scale(.96); }
+.skill-locked { opacity: .45; pointer-events: none; filter: grayscale(.6); }
 
 /* animación de movimiento (salto/carrera) de las fichas */
 .tr-run canvas { animation: runBounce .22s linear infinite; }

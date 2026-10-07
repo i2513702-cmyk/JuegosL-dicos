@@ -1,0 +1,41 @@
+<svg width="680" height="380" viewBox="0 0 680 380" role="img" xmlns="http://www.w3.org/2000/svg">
+<title>Terreno de conquista</title>
+<desc>Escenario estatico de un mapa de terreno dividido en 8x8 parcelas de colores neutros, pensado como fondo para que los avatares representen facciones que capturan celdas</desc>
+<rect x="0" y="0" width="680" height="380" fill="#2f3a2a"/>
+<g>
+<rect x="40" y="20" width="600" height="340" fill="#3a4a34" stroke="#20281c" stroke-width="3"/>
+</g>
+<g stroke="#20281c" stroke-width="1" opacity="0.6">
+<line x1="40" y1="62.5" x2="640" y2="62.5"/>
+<line x1="40" y1="105" x2="640" y2="105"/>
+<line x1="40" y1="147.5" x2="640" y2="147.5"/>
+<line x1="40" y1="190" x2="640" y2="190"/>
+<line x1="40" y1="232.5" x2="640" y2="232.5"/>
+<line x1="40" y1="275" x2="640" y2="275"/>
+<line x1="40" y1="317.5" x2="640" y2="317.5"/>
+<line x1="115" y1="20" x2="115" y2="360"/>
+<line x1="190" y1="20" x2="190" y2="360"/>
+<line x1="265" y1="20" x2="265" y2="360"/>
+<line x1="340" y1="20" x2="340" y2="360"/>
+<line x1="415" y1="20" x2="415" y2="360"/>
+<line x1="490" y1="20" x2="490" y2="360"/>
+<line x1="565" y1="20" x2="565" y2="360"/>
+</g>
+<g opacity="0.35" fill="#5a6a4a">
+<circle cx="90" cy="55" r="9"/>
+<circle cx="240" cy="90" r="7"/>
+<circle cx="400" cy="140" r="10"/>
+<circle cx="520" cy="70" r="8"/>
+<circle cx="150" cy="260" r="9"/>
+<circle cx="330" cy="300" r="7"/>
+<circle cx="560" cy="290" r="10"/>
+<circle cx="470" cy="230" r="6"/>
+</g>
+<g opacity="0.85">
+<rect x="42" y="22" width="35" height="35" fill="#2f6fe4"/>
+<rect x="565" y="22" width="35" height="35" fill="#f0b400"/>
+<rect x="42" y="325" width="35" height="35" fill="#23a55a"/>
+<rect x="565" y="325" width="35" height="35" fill="#e8792a"/>
+<rect x="303" y="172" width="35" height="35" fill="#8a2f2f"/>
+</g>
+</svg>

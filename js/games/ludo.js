@@ -46,9 +46,14 @@ App.games.ludo = (function (ui) {
     };
 
     root.innerHTML = '';
-    const frame = ui.el('div', 'l-board-frame', '');
+    /* En modo escena el tablero ya viene dibujado en tablero-ludo.svg con la
+       misma geometria (15x15, celda 24, margen 12 sobre 384x384), asi que aqui
+       solo se colocan las fichas encima; sin escena se conserva la rejilla DOM. */
+    const inScene = !!config.escenaCapa;
+    const BOARD = { W: 384, H: 384, CELL: 24, MARGIN: 12 };
+    const frame = ui.el('div', 'l-board-frame' + (inScene ? ' l-en-escena' : ''), '');
     frame.innerHTML = '<div class="ludo-grid"></div><div class="ludo-tokens"></div>';
-    root.appendChild(frame);
+    if (inScene) config.escenaCapa.appendChild(frame); else root.appendChild(frame);
     const gridEl = frame.querySelector('.ludo-grid');
     const tokensEl = frame.querySelector('.ludo-tokens');
 
@@ -59,6 +64,7 @@ App.games.ludo = (function (ui) {
 
     for (let r = 0; r < N; r++) {
       for (let c = 0; c < N; c++) {
+        if (inScene) break;          /* con escenario la imagen ya es el tablero */
         const key = r + '-' + c;
         const cell = ui.el('div', 'l-cell', '');
         let owner = -1;
@@ -119,12 +125,45 @@ if (owner !== -1 && owner < state.players.length) {
         tokenEls[pi + '-' + ti] = dot;
       });
     });
+    /* posicion de una casilla del SVG, en % de la escena */
+    function cellPct(rc) {
+      const x = BOARD.MARGIN + rc[1] * BOARD.CELL + BOARD.CELL / 2;
+      const y = BOARD.MARGIN + rc[0] * BOARD.CELL + BOARD.CELL / 2;
+      return { left: x / BOARD.W * 100, top: y / BOARD.H * 100 };
+    }
+    /* varias fichas en la misma casilla se separan un poco para verse todas */
+    function crowdOffset(pi, ti) {
+      const t = state.players[pi].tokens[ti];
+      if (t.tp < 0 || t.tp >= 56) return [0, 0];
+      const g = t.tp < 51 ? (START[pi] + t.tp) % 52 : -1;
+      const rc = gridCellFor(pi, t.tp, ti);
+      let n = 0;
+      for (let p2 = 0; p2 < state.players.length; p2++) {
+        state.players[p2].tokens.forEach((o, oi) => {
+          if (o.tp < 0 || o.tp >= 56) return;
+          const g2 = o.tp < 51 ? (START[p2] + o.tp) % 52 : -1;
+          const same = g2 === g ? gridCellFor(p2, o.tp, oi).join(',') === rc.join(',') : false;
+          if (same && (p2 < pi || (p2 === pi && oi < ti))) n++;
+        });
+      }
+      const off = [[0, 0], [-5, -5], [5, -5], [-5, 5], [5, 5], [0, -7], [0, 7], [-7, 0], [7, 0]];
+      return off[n % off.length];
+    }
+
     function place(pi, ti) {
       const t = state.players[pi].tokens[ti];
       const [r, c] = gridCellFor(pi, t.tp, ti);
       const dot = tokenEls[pi + '-' + ti];
-      dot.style.left = ((c + 0.5) / N * 100) + '%';
-      dot.style.top = ((r + 0.5) / N * 100) + '%';
+      let p;
+      if (inScene) {
+        p = cellPct([r, c]);
+        const [dx, dy] = crowdOffset(pi, ti);
+        dot.style.left = (p.left + dx) + '%';
+        dot.style.top = (p.top + dy) + '%';
+      } else {
+        dot.style.left = ((c + 0.5) / N * 100) + '%';
+        dot.style.top = ((r + 0.5) / N * 100) + '%';
+      }
       dot.style.zIndex = t.tp >= 56 ? 30 : 10;
     }
     state.players.forEach((p, pi) => p.tokens.forEach((t, ti) => place(pi, ti)));

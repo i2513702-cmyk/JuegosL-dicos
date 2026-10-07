@@ -1,6 +1,0 @@
-LudoApp API en http://localhost:3100
-  GET  /api/health   -> estado de la conexión
-  POST /api/auth/register · /api/auth/login
-  GET  /api/questions · POST /api/questions/import
-Presiona Ctrl+C para detener.
-Listo. Prueba  GET /api/health  para confirmar el estado.

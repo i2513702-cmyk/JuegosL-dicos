@@ -9,6 +9,8 @@ window.App = window.App || {};
 
 /* ----------------------- autenticación ----------------------- */
 App.auth = (function () {
+  const ui = App.ui;
+
   function who() {
     const id = App.storage.getKey('currentUser');
     return id ? App.storage.getById('users', id) : null;
@@ -31,12 +33,16 @@ App.auth = (function () {
   }
 
   /* Login seguro: valida en Supabase (contraseña hasheada, nunca en claro).
-   * Si el server de la API no responde, cae a la demo local (modo offline). */
+   * - 401 del server  -> credenciales malas: se muestra el error.
+   * - sin server (offline) o error interno (500) -> respaldo a la demo local. */
   function loginSecuro(usuario, clave) {
     if (!(App.api && App.api.login)) return Promise.resolve(login(usuario, clave));
     return App.api.login(usuario, clave).then((r) => {
-      if (!r) { App.ui.toast('⚠️ Sin conexión a la BD: modo offline local', 'warn'); return login(usuario, clave); }
-      if (!r.ok) return { ok: false, reason: r.reason || 'Credenciales rechazadas por la BD.' };
+      if (!r || r.status === 500) {
+        ui.toast('⚠️ BD no disponible: modo offline local', 'warn');
+        return login(usuario, clave);
+      }
+      if (!r.ok) return { ok: false, reason: r.reason || 'Credenciales rechazadas.' };
       App.api.setToken(r.token);
       const local = login(usuario, clave);
       return local.ok ? local : { ok: true, user: r.user };

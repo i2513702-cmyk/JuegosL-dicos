@@ -16,8 +16,8 @@ App.games.carrera = (function (ui) {
       categoryId: config.categoryId,
       difficultyId: config.difficultyId
     });
-    const TOTAL = config.trackLength || 30;
-    const OBSTACLES = [4, 9, 14, 19, 24, 27];
+    const TOTAL = config.trackLength || 14;
+    const OBSTACLES = [3, 6, 9, 11];
     const colors = ['rojo', 'verde', 'azul', 'amarillo'];
 
     const players = config.players.map((p, i) => ({
@@ -30,19 +30,45 @@ App.games.carrera = (function (ui) {
     root.appendChild(title);
 
     /* ---- pista ---- */
-    const track = ui.el('div', 'track-wrap', '');
+    /* En modo escena el asfalto y la linea de meta YA estan dibujados en el SVG
+       (pista-de-carreras.svg: asfalto de y=190 a 380, salida en x=14 y meta en
+       x=600), asi que aqui solo se colocan los avatares y los obstaculos sobre
+       esa pintura, sin recuadros propios. */
+    const inScene = !!config.escenaCapa;
+    const SCENE = { W: 680, H: 380, ROAD_TOP: 190, ROAD_BOTTOM: 380, START_X: 14, FINISH_X: 600 };
+    const track = ui.el('div', 'track-wrap' + (inScene ? ' tr-en-escena' : ''), '');
     const cells = ui.el('div', 'track-cells', '');
-    for (let i = 0; i < TOTAL; i++) {
-      const cell = ui.el('div', 'tr-cell' + (OBSTACLES.indexOf(i) !== -1 ? ' tr-cell-obs' : ''),
-        OBSTACLES.indexOf(i) !== -1 ? '⚠️' : String(i + 1));
-      if (i === TOTAL) cell;
-      cells.appendChild(cell);
+    if (!inScene) {
+      for (let i = 0; i < TOTAL; i++) {
+        const cell = ui.el('div', 'tr-cell' + (OBSTACLES.indexOf(i) !== -1 ? ' tr-cell-obs' : ''),
+          OBSTACLES.indexOf(i) !== -1 ? '⚠️' : String(i + 1));
+        cells.appendChild(cell);
+      }
+      cells.appendChild(ui.el('div', 'tr-meta', '🏁'));
+    } else {
+      OBSTACLES.forEach((i) => {
+        const mark = ui.el('div', 'tr-obs', '⚠️');
+        placeOnRoad(mark, i, 0, 7);
+        cells.appendChild(mark);
+      });
     }
-    cells.appendChild(ui.el('div', 'tr-meta', '🏁'));
     track.appendChild(cells);
     const trackTokens = ui.el('div', 'track-tokens', '');
     track.appendChild(trackTokens);
-    root.appendChild(track);
+    if (inScene) config.escenaCapa.appendChild(track); else root.appendChild(track);
+
+    /* coloca un elemento sobre el asfalto del SVG (en % de la escena).
+       El ancho del avatar se descuenta para que no sobresalga por los lados. */
+    function placeOnRoad(node, pos, lane, half) {
+      half = half || node.offsetWidth / 2 || 17;
+      const min = SCENE.START_X + half + 2;
+      const max = SCENE.FINISH_X - half - 2;
+      let x = SCENE.START_X + (pos / TOTAL) * (SCENE.FINISH_X - SCENE.START_X);
+      x = Math.max(min, Math.min(max, x));
+      const y = 247 + (lane % 2) * 76;   /* los dos carriles centrales del asfalto */
+      node.style.left = (x / SCENE.W * 100) + '%';
+      node.style.top = ((y - SCENE.ROAD_TOP) / (SCENE.ROAD_BOTTOM - SCENE.ROAD_TOP) * 100) + '%';
+    }
 
     const tokenEls = [];
     players.forEach((p, i) => {
@@ -62,12 +88,30 @@ App.games.carrera = (function (ui) {
       tokenEls.push(t);
     });
 
+    /* Bandera de meta para quien llega primero. */
+    function markFinished(p, i) {
+      p.finished = true;
+      const el = tokenEls[i];
+      if (!el) return;
+      el.classList.add('tr-finish');
+      const flag = ui.el('span', 'tr-flag', '\uD83C\uDFC1');
+      el.appendChild(flag);
+    }
+
     function paintTrack() {
       players.forEach((p, i) => {
         const t = tokenEls[i];
-        t.style.left = (p.pos / TOTAL * 100) + '%';
-        t.style.top = (20 + (i % 2) * 34) + '%';
-        if (p.finished) t.style.opacity = 0.6;
+        if (inScene) {
+          placeOnRoad(t, Math.min(p.pos, TOTAL), i);
+        } else {
+          t.style.left = (p.pos / TOTAL * 100) + '%';
+          t.style.top = (20 + (i % 2) * 34) + '%';
+        }
+        if (p.finished) {
+            t.style.opacity = 1;
+          } else {
+            t.style.opacity = 0.98;
+          }
       });
     }
     paintTrack();
@@ -183,9 +227,9 @@ App.games.carrera = (function (ui) {
             if (el) el.classList.remove('tr-run');
             return resolve(true);
           }
-          setTimeout(step, 220);
+          setTimeout(step, 130);
         };
-        setTimeout(step, 30);
+        setTimeout(step, 20);
       });
     }
 
@@ -207,7 +251,15 @@ App.games.carrera = (function (ui) {
           ui.sound('correct');
           ui.toast(p.nombre + ' avanza +' + steps + (p.streak >= 2 ? ' (racha x' + p.streak + ' 🔥)' : ''), 'success');
           await slideAnim(p, steps, () => {});
-          if (p.pos >= TOTAL) return endGame(p.id);
+          if (p.pos >= TOTAL) {
+            markFinished(p, state.turn);
+            ui.sound('win');
+            ui.toast('🏁 ' + p.nombre + ' cruzó la meta y gana la Carrera', 'success');
+            ui.confetti(root);
+            /* pequeño descanso para ver la bandera antes del podio */
+            await new Promise((r) => setTimeout(r, 700));
+            return endGame(p.id);
+          }
           if (OBSTACLES.indexOf(p.pos) !== -1) {
             ui.toast('⚠️ ¡Obstáculo! -2 casillas', 'warn');
             ui.shake(track);

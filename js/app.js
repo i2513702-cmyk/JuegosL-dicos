@@ -433,13 +433,10 @@ App.roam = (function () {
 
     const doLogin = ui.el('button', 'btn-primary w-full mt-3', '🔑 Ingresar');
     doLogin.addEventListener('click', () => {
-      doLogin.disabled = true;
-      App.auth.loginSecuro(selUsr.value, iKey.value).then((r) => {
-        doLogin.disabled = false;
-        if (!r.ok) return ui.toast('⚠️ ' + r.reason, 'error');
-        ui.toast('👋 Hola, ' + (r.user.nombre || r.user.usuario), 'success');
-        location.hash = '#/inicio';
-      });
+      const r = App.auth.login(selUsr.value, iKey.value);
+      if (!r.ok) return ui.toast('⚠️ ' + r.reason, 'error');
+      ui.toast('👋 Hola, ' + (r.user.nombre || r.user.usuario), 'success');
+      location.hash = '#/inicio';
     });
     card.appendChild(doLogin);
 
@@ -449,14 +446,18 @@ App.roam = (function () {
       const q = ui.el('button', 'btn-ghost text-xs',
         (u.rol === 'docente' ? '👩‍🏫 ' : '🧑‍🎓 ') + (u.nombre || u.usuario));
       q.addEventListener('click', () => {
-        App.auth.loginSecuro(u.usuario, '1234').then(() => {
-          ui.toast('👋 Hola, ' + (u.nombre || u.usuario), 'success');
-          location.hash = '#/inicio';
-        });
+        App.auth.login(u.usuario, '1234');
+        ui.toast('👋 Hola, ' + (u.nombre || u.usuario), 'success');
+        location.hash = '#/inicio';
       });
       quick.appendChild(q);
     });
     card.appendChild(quick);
+
+    /* acceso a las plantillas de los modos (avatares/index.html) */
+    const tmpl = ui.el('a', 'block text-center text-xs text-indigo-600 underline mt-5', 'Ver las plantillas de los 4 juegos (con escenarios) →');
+    tmpl.href = 'avatares/index.html';
+    card.appendChild(tmpl);
 
     repaint();
   }
@@ -583,6 +584,36 @@ App.launchGame = function (opts) {
   container.innerHTML = '';
   const game = App.games[opts.mode];
   if (!game || !game.init) { container.appendChild(ui.el('p', 'text-sm', 'Modo no implementado.')); return; }
+  const ESCENARIOS = {
+    ludo: { file: 'tablero-ludo.svg', w: 384, h: 384 },
+    batalla: { file: 'campo-de-batalla.svg', w: 680, h: 380 },
+    carrera: { file: 'pista-de-carreras.svg', w: 680, h: 380 },
+    conquista: { file: 'terreno-de-conquista.svg', w: 680, h: 380 }
+  };
+
+  /* ESCENA: la imagen estatica ES el tablero (con su formato exacto) y el juego
+     se dibuja DENTRO de ella (config.escenaCapa), no encima como tarjetas sueltas.
+     El area de preguntas, marcador y habilidades queda fuera, abajo. */
+  let escena = null;
+  const escDef = ESCENARIOS[opts.mode];
+  if (escDef) {
+    escena = ui.el('div', 'escena', '');
+    escena.style.aspectRatio = escDef.w + ' / ' + escDef.h;
+    if (escDef.w === escDef.h) escena.classList.add('escena-cuadrada');
+    const bg = document.createElement('img');
+    bg.className = 'escenario-capa';
+    bg.src = 'escenarios-estaticos/' + escDef.file;
+    bg.alt = '';
+    bg.setAttribute('aria-hidden', 'true');
+    bg.width = escDef.w; bg.height = escDef.h;
+    bg.decoding = 'async';
+    escena.appendChild(bg);
+    const capa = ui.el('div', 'escena-capa', '');
+    escena.appendChild(capa);
+    config.escena = escena;
+    config.escenaCapa = capa;
+    config.escenaSize = { w: escDef.w, h: escDef.h };
+  }
 
   /* toolbar de salida */
   const top = ui.el('div', 'flex items-center justify-between mb-4', '');
@@ -601,6 +632,20 @@ App.launchGame = function (opts) {
     App.session.record(config, config.players.map((p) => ({ id: p.id, puntos: 0 })), opts.mode);
     console.error(e);
     return;
+  }
+
+  /* la escena se coloca despues de init (los juegos vacian su contenedor),
+     justo debajo de la barra de salida */
+  if (escena) {
+    container.style.position = 'relative';
+    try {
+      const toolbar = container.firstElementChild;
+      const ref = toolbar && toolbar.parentNode === container ? toolbar.nextSibling : null;
+      if (ref) container.insertBefore(escena, ref);
+      else container.appendChild(escena);
+    } catch (err) {
+      container.appendChild(escena);   /* la escena nunca se queda fuera del tablero */
+    }
   }
   App.roam.navBtn('inicio');
 };

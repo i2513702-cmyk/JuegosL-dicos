@@ -41,12 +41,15 @@ App.games.batalla = (function (ui) {
     root.appendChild(ui.el('div', 'ba-title text-center text-xl font-extrabold text-slate-900 mb-2', '⚔️ Batalla de Preguntas'));
 
     /* arena con los avatares de cada equipo */
-    const arena = ui.el('div', 'ba-arena', '');
+    /* En modo escena, los peleadores se paran sobre las plataformas que ya
+       dibuja campo-de-batalla.svg (suelo en y~215, 左右 en x=45 y x=475). */
+    const inScene = !!config.escenaCapa;
+    const arena = ui.el('div', 'ba-arena' + (inScene ? ' ba-en-escena' : ''), '');
     arena.innerHTML =
       '<div class="ba-fighter"><canvas id="ba-canvas-a" class="avatar-canvas ba-canvas"></canvas><div class="ba-pose" id="ba-pose-a"></div></div>' +
       '<div class="ba-vs">⚔️<br>VS</div>' +
       '<div class="ba-fighter"><canvas id="ba-canvas-b" class="avatar-canvas ba-canvas"></canvas><div class="ba-pose" id="ba-pose-b"></div></div>';
-    root.appendChild(arena);
+    if (inScene) config.escenaCapa.appendChild(arena); else root.appendChild(arena);
 
     /* ---- motor de animación de los avatares (30 fps) ----
      * Cada pose animada de verdad: respiración en reposo (idle),
@@ -168,11 +171,44 @@ App.games.batalla = (function (ui) {
       renderArena(animFrame);
     }, 33);
 
+    /* Barra de vida pixelada flotante, encima de la cabeza de cada
+       avatar dentro de la escena. Muestra el porcentaje dentro. */
+    function mountPixelHP() {
+      const frame = arena.querySelector('.ba-fighter');
+      if (!frame) return;
+      teams.forEach((t, i) => {
+        const box = ui.el('div', 'ba-hpbox ba-hpbox-' + i);
+        box.innerHTML =
+          '<span class="ba-hpbox-name"></span>' +
+          '<div class="ba-hpbox-bar"><i class="ba-hpbox-fill"></i><b class="ba-hpbox-pct">100%</b></div>';
+        frame.appendChild(box);
+      });
+    }
+
+    function paintPixelHP() {
+      const frame = arena.querySelector('.ba-fighter');
+      if (!frame) return;
+      const total = config.hpTotal || 100;
+      teams.forEach((t, i) => {
+        const box = frame.querySelector('.ba-hpbox-' + i);
+        if (!box) return;
+        const pct = Math.max(0, Math.round(t.hp / total * 100));
+        box.querySelector('.ba-hpbox-fill').style.width = pct + '%';
+        box.querySelector('.ba-hpbox-pct').textContent = pct + '%';
+        box.querySelector('.ba-hpbox-name').textContent = t.name;
+        box.classList.toggle('ba-hpbox-turn', state.turn === i);
+        box.classList.toggle('ba-hpbox-low', pct <= 30);
+        box.classList.toggle('ba-hpbox-mid', pct > 30 && pct <= 55);
+        box.classList.toggle('ba-hpbox-shield', t.shield > 0);
+      });
+    }
+
     const bars = ui.el('div', 'grid grid-cols-2 gap-3 mb-4');
     bars.innerHTML =
       '<div><div class="text-xs font-bold mb-1" id="ba-name-a"></div><div id="ba-hp-a" class="hp-bar"><div class="hp-fill"></div><span class="hp-num">100</span></div></div>' +
       '<div><div class="text-xs font-bold mb-1 text-right" id="ba-name-b"></div><div id="ba-hp-b" class="hp-bar"><div class="hp-fill"></div><span class="hp-num">100</span></div></div>';
     root.appendChild(bars);
+    mountPixelHP();
 
     function hpNode(idx) {
       return bars.querySelector('#ba-hp-' + (idx === 0 ? 'a' : 'b'));
@@ -196,6 +232,7 @@ App.games.batalla = (function (ui) {
       });
       bars.querySelector('#ba-name-a').textContent = teams[0].name + (state.turn === 0 ? ' (turno)' : '');
       bars.querySelector('#ba-name-b').textContent = teams[1].name + (state.turn === 1 ? ' (turno)' : '');
+      paintPixelHP();
     }
 
     paintHP();
@@ -228,6 +265,7 @@ App.games.batalla = (function (ui) {
         const on = (sk === 'doble_dano' && t.doubleReady) || (sk === 'escudo' && t.shield > 0);
         return { key: sk, icono: ic, nombre: nm, amount: minCounts[sk] || 0, on, label: on ? ' (activo)' : '' };
       }), (sk) => useSkill(t, sk), state.ended);
+      skillRow.classList.toggle('skill-locked', !!state.busy);
     }
 
     function useSkill(t, sk) {
@@ -240,8 +278,25 @@ App.games.batalla = (function (ui) {
       if (sk === 'comodin') { t.pendComodin = true; ui.toast('🃏 Comodín activo', 'info'); }
       if (sk === 'doble_dano') { t.doubleReady = true; ui.toast('💥 Doble daño preparado', 'warn'); }
       if (sk === 'escudo') { t.shield = 1; ui.toast('🛡️ Escudo activo', 'info'); paintHP(); }
-      if (sk === 'cura') { t.hp = Math.min(config.hpTotal || 100, t.hp + 20); t.pose = 'heal'; renderArena(); ui.sound('correct'); ui.toast('❤️ +20 de vida', 'success'); paintHP(); }
+      if (sk === 'cura') healAnim(t);
       renderSkills();
+    }
+
+    /* Curacion: aura verde, barra pixelada que se llena y texto flotante. */
+    function healAnim(t) {
+      const total = config.hpTotal || 100;
+      const before = Math.round(t.hp);
+      t.hp = Math.min(total, t.hp + 25);
+      const gained = Math.round(t.hp) - before;
+      t.pose = 'heal';
+      const box = arena.querySelector('.ba-hpbox-' + (t.color === 'rojo' ? 0 : 1));
+      if (box) { box.classList.remove('ba-hpbox-heal'); void box.offsetWidth; box.classList.add('ba-hpbox-heal'); }
+      renderArena();
+      ui.sound('correct');
+      ui.floatText(bars, '\u2764\uFE0F +' + gained, 'ft-heal');
+      ui.toast(gained > 0 ? '\u2764\uFE0F Curacion: +' + gained + ' de vida' : '\u2764\uFE0F Ya estas al maximo de vida', gained > 0 ? 'success' : 'info');
+      paintHP();
+      setTimeout(() => { if (t.pose === 'heal') t.pose = 'idle'; renderArena(); }, 900);
     }
 
     function damageAnim(t, amount, showBlock) {
@@ -309,6 +364,7 @@ App.games.batalla = (function (ui) {
       box.querySelector('#ba-att').addEventListener('click', async () => {
         if (state.busy) return;
         state.busy = true;
+        renderSkills();
         let dmg = normalDmg;
         if (t.doubleReady) { dmg *= 2; }
         t.doubleReady = false;
@@ -320,11 +376,13 @@ App.games.batalla = (function (ui) {
         if (rv.shield > 0) { rv.shield = 0; damageAnim(rv, 0, true); }
         else damageAnim(rv, dmg, false);
         state.busy = false;
+        renderSkills();
         finishAction(t, rv);
       });
       box.querySelector('#ba-def').addEventListener('click', async () => {
         if (state.busy) return;
         state.busy = true;
+        renderSkills();
         t.shield = 1;
         t.pose = 'defend';
         renderArena();
@@ -332,6 +390,7 @@ App.games.batalla = (function (ui) {
         paintHP();
         ui.toast('🛡️ ' + t.name + ' se prepara para bloquear', 'info');
         state.busy = false;
+        renderSkills();
         finishAction(t, rival());
       });
     }
