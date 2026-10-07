@@ -6,11 +6,16 @@
   "scripts": {
     "api": "node api/server.js",
     "seed": "node scripts/seed_db.js",
-    "start": "node api/server.js",
+    "start": "node servidor-live.js",
     "test": "node tests/audit_full.js && node tests/movimiento.js && node tests/verify_protos.js && node tests/encoding_check.js && node tests/cross-browser-test.js",
-    "test:movimiento": "node tests/movimiento.js"
+    "test:movimiento": "node tests/movimiento.js",
+    "live": "node servidor-live.js"
   },
   "dependencies": {
-    "pg": "^8.23.0"
+    "pg": "^8.23.0",
+    "socket.io": "^4.7.5"
+  },
+  "engines": {
+    "node": ">=18"
   }
 }

@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: ludoapp-live
+    runtime: node
+    plan: free
+    buildCommand: npm install
+    startCommand: node servidor-live.js
+    healthCheckPath: /health
+    envVars:
+      - key: HOST_KEY
+        sync: false

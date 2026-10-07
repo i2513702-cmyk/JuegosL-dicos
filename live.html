@@ -1,0 +1,140 @@
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>LudoApp · En vivo</title>
+<style>
+:root{--r:#e21b3c;--b:#1368ce;--y:#d89e00;--g:#26890c;--ink:#fff;--mut:#c4b8f0;--card:rgba(255,255,255,.1)}
+*{box-sizing:border-box;margin:0}html,body{height:100%}
+body{font-family:"Segoe UI",system-ui,Roboto,sans-serif;color:var(--ink);background:#150833;overflow-x:hidden}
+.bg{position:fixed;inset:0;z-index:-1;background:linear-gradient(135deg,#46178f,#1b0b42 50%,#0f2a6b,#46178f);background-size:300% 300%;animation:bg 18s ease infinite}
+.bg i{position:absolute;width:var(--s);height:var(--s);left:var(--x);top:var(--y);background:rgba(255,255,255,.06);border-radius:var(--rd);animation:fl 14s ease-in-out infinite alternate;animation-delay:var(--d)}
+@keyframes bg{50%{background-position:100% 100%}}@keyframes fl{to{transform:translate(40px,-60px) rotate(90deg)}}
+#root{min-height:100dvh;display:flex;flex-direction:column;padding:max(14px,env(safe-area-inset-top)) clamp(12px,3vw,40px) max(14px,env(safe-area-inset-bottom))}
+.top{display:flex;align-items:center;gap:12px;justify-content:space-between;margin-bottom:14px;font-weight:900}
+.logo{font-size:clamp(1.1rem,2.2vw,1.6rem);letter-spacing:.03em}
+.main{flex:1;display:flex;flex-direction:column;gap:clamp(12px,2vw,24px);min-height:0}
+.card{background:var(--card);border:1px solid rgba(255,255,255,.16);border-radius:22px;padding:clamp(16px,2.4vw,30px);backdrop-filter:blur(10px)}
+.center{align-items:center;justify-content:center;text-align:center}
+.grid2{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,340px),1fr));gap:clamp(12px,2vw,24px);flex:1}
+h1{font-size:clamp(2rem,6vw,4.5rem);font-weight:900;line-height:1.05}h2{font-size:clamp(1.3rem,3vw,2.2rem);font-weight:900}
+.mut{color:var(--mut)}
+input,select{width:100%;padding:16px;border-radius:14px;border:3px solid transparent;background:#fff;color:#222;font-size:1.15rem;font-weight:800;text-align:center;outline:none;margin-bottom:12px}
+input:focus,select:focus{border-color:#ffc800}
+.btn{display:inline-block;border:0;cursor:pointer;color:#fff;font-weight:900;font-size:1.2rem;padding:16px 28px;border-radius:14px;background:#26890c;box-shadow:0 5px 0 rgba(0,0,0,.35);transition:.1s;width:100%}
+.btn:active{transform:translateY(4px);box-shadow:0 1px 0 rgba(0,0,0,.35)}.btn:disabled{opacity:.45}
+.btn.pu{background:#7c3aed}.btn.rd{background:#e21b3c}.btn.sm{width:auto;font-size:.95rem;padding:10px 16px}
+.pin{font-family:Consolas,monospace;font-size:clamp(3rem,11vw,8rem);font-weight:900;letter-spacing:.12em;color:#ffc800;line-height:1}
+.avs{display:grid;grid-template-columns:repeat(auto-fill,minmax(64px,1fr));gap:10px}
+.av{display:block;border-radius:16px;overflow:hidden;line-height:0}.av svg{width:100%;height:auto;display:block}
+.pick{border:4px solid transparent;border-radius:18px;cursor:pointer;padding:0;background:none}.pick.on{border-color:#ffc800;transform:scale(1.08)}
+.pl{display:flex;flex-wrap:wrap;gap:12px;align-content:flex-start}
+.chip{display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.14);border-radius:14px;padding:6px 14px 6px 6px;font-weight:800;animation:pop .3s}
+.chip .av{width:44px}.chip.off{opacity:.4}@keyframes pop{from{transform:scale(.3);opacity:0}}
+.opts{display:grid;grid-template-columns:1fr 1fr;gap:clamp(10px,1.6vw,20px)}
+.o{position:relative;border:0;color:#fff;font-weight:900;font-size:clamp(1rem,2.4vw,2rem);border-radius:16px;padding:clamp(16px,3vw,34px) 14px;min-height:clamp(86px,16vh,170px);display:flex;align-items:center;gap:14px;text-align:left;box-shadow:0 6px 0 rgba(0,0,0,.3);cursor:pointer}
+.o.s0{background:var(--r)}.o.s1{background:var(--b)}.o.s2{background:var(--y)}.o.s3{background:var(--g)}
+.o .sh{font-size:1.5em;opacity:.9}.o.dim{opacity:.25}.o.win{outline:6px solid #fff;animation:pop .4s}
+.o .cnt{margin-left:auto;font-size:1.3em;background:rgba(0,0,0,.3);border-radius:12px;padding:2px 14px}
+.q{font-size:clamp(1.3rem,3.2vw,2.6rem);font-weight:900;text-align:center;line-height:1.25}
+.bar{height:14px;border-radius:9px;background:rgba(255,255,255,.2);overflow:hidden}.bar b{display:block;height:100%;background:#ffc800;transition:width .2s linear}
+.tm{width:clamp(56px,7vw,92px);height:clamp(56px,7vw,92px);border-radius:50%;background:#7c3aed;display:grid;place-items:center;font-size:clamp(1.5rem,3vw,2.6rem);font-weight:900}
+.row{display:flex;align-items:center;gap:12px;background:rgba(255,255,255,.12);border-radius:14px;padding:8px 14px;margin-bottom:8px;font-weight:800}
+.row .av{width:42px}.row .sc{margin-left:auto;font-size:1.2em;color:#ffc800}.row .rk{width:28px;opacity:.7}
+.big{font-size:clamp(4rem,14vw,9rem);line-height:1}
+.pod{display:flex;align-items:flex-end;justify-content:center;gap:clamp(8px,2vw,24px);min-height:260px}
+.pod div{text-align:center;font-weight:900;flex:1;max-width:220px}.pod .av{width:70%;margin:0 auto 6px}
+.pod .st{background:linear-gradient(#ffc800,#d89e00);border-radius:12px 12px 0 0;color:#222;display:grid;place-items:center;font-size:2.4rem}
+.me{display:flex;align-items:center;gap:10px;font-weight:900}.me .av{width:44px}
+.ok{background:#26890c}.ko{background:#e21b3c}.res{border-radius:22px;padding:30px}
+@media(min-width:900px){.hide-d{display:none}}
+@media(max-width:560px){.opts{grid-template-columns:1fr 1fr}.o{flex-direction:column;justify-content:center;text-align:center;gap:4px}.o .cnt{margin:0}}
+</style></head><body>
+<div class="bg"></div><div id="root"></div>
+<script src="/socket.io/socket.io.js"></script>
+<script src="js/core/data.js"></script><script src="js/core/storage.js"></script>
+<script>
+/* ---------- AVATARES: 16 sprites pixelados 8x8 (mitad izquierda, se espejan) ---------- */
+const AV=[
+['Gato','#f59e0b,#fde68a,#fb7185,#fef3c7','a...|aa..|aaaa|akaa|aaaa|aaac|aabb|.aaa'],
+['Perro','#a16207,#fef3c7,#222,#dbeafe','.aaa|aaaa|aaaa|akaa|aabb|aabc|abbb|..bb'],
+['Robot','#94a3b8,#38bdf8,#f43f5e,#1e293b','...c|..aa|aaaa|abkb|abbb|aaaa|aacc|.aaa'],
+['Panda','#f8fafc,#1f2937,#fb7185,#bbf7d0','bb..|bbaa|aaaa|abba|abwa|aaak|aaaa|.aaa'],
+['Zorro','#f97316,#fff7ed,#222,#fed7aa','a...|aaa.|aaaa|akaa|aabb|abbc|.abb|..bb'],
+['Alien','#4ade80,#14532d,#fff,#312e81','...a|..aa|.aaa|aaaa|abbb|abwb|.aaa|..aa'],
+['Fantasma','#e0e7ff,#6366f1,#fff,#4338ca','..aa|.aaa|aaaa|akaa|akaa|aaab|aaaa|a.a.'],
+['Dragón','#22c55e,#fde047,#ef4444,#14532d','b...|aa..|aaaa|akaa|aaaa|abbb|abcb|.aaa'],
+['Búho','#92400e,#fde68a,#f59e0b,#fef3c7','a...|aaaa|abba|abka|abba|aaac|aaaa|.aaa'],
+['Unicornio','#f5d0fe,#a855f7,#fde047,#fce7f3','...c|a.cc|aaaa|akaa|aaaa|abaa|aaaa|.aaa'],
+['Ninja','#1f2937,#fcd9b6,#ef4444,#fecaca','..aa|cccc|aaaa|abkb|aaaa|aaaa|.aaa|..aa'],
+['Astronauta','#e2e8f0,#38bdf8,#f97316,#0f172a','..aa|.aaa|abbb|abkb|abbb|aaaa|aacc|.aaa'],
+['Mago','#7c3aed,#fcd9b6,#fde047,#ddd6fe','...a|..aa|.aaa|cccc|bkbb|bbww|bwww|.www'],
+['Rana','#4ade80,#fef9c3,#ef4444,#bbf7d0','bb..|bkaa|aaaa|aaaa|aaaa|accc|aaaa|.aaa'],
+['Pollito','#fde047,#f97316,#222,#fef9c3','...a|..aa|.aaa|akaa|aaaa|aaab|.aaa|..b.'],
+['Calavera','#f1f5f9,#94a3b8,#111,#a5b4fc','.aaa|aaaa|aaaa|acca|acca|aaac|.aba|.aba']];
+function avatar(i,cls){i=(+i||0)%AV.length;const[n,pal,g]=AV[i],c=pal.split(','),m={a:c[0],b:c[1],c:c[2],k:'#1b1b2f',w:'#fff'};let r='';
+g.split('|').forEach((row,y)=>{for(let x=0;x<4;x++){const ch=row[x];if(ch&&ch!=='.'){r+=`<rect x="${x}" y="${y}" width="1.02" height="1.02" fill="${m[ch]}"/><rect x="${7-x}" y="${y}" width="1.02" height="1.02" fill="${m[ch]}"/>`}}});
+return `<span class="av ${cls||''}" title="${n}"><svg viewBox="-1 -1 10 10" shape-rendering="crispEdges"><rect x="-1" y="-1" width="10" height="10" fill="${c[3]}"/>${r}</svg></span>`}
+/* ---------- util ---------- */
+const $=s=>document.querySelector(s),root=$('#root'),esc=s=>String(s).replace(/[&<>"]/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+const SH=['▲','◆','●','■'];
+(function(){const b=document.querySelector('.bg');for(let i=0;i<9;i++){const e=document.createElement('i');e.style.cssText=`--s:${60+Math.random()*140}px;--x:${Math.random()*100}%;--y:${Math.random()*100}%;--rd:${Math.random()>.5?'50%':'16px'};--d:-${Math.random()*14}s`;b.appendChild(e)}})();
+function page(inner,right){root.innerHTML=`<div class="top"><div class="logo">🎓 LudoApp <span class="mut">· En vivo</span></div><div>${right||''}</div></div><div class="main">${inner}</div>`}
+const socket=io();let T=null,off=0,tick=null;
+function timer(endsAt,total,cb){clearInterval(tick);const f=()=>{const left=Math.max(0,(endsAt-(Date.now()+off))/1000);cb(left,left/total);if(left<=0)clearInterval(tick)};f();tick=setInterval(f,100)}
+const buzz=n=>navigator.vibrate&&navigator.vibrate(n);
+/* ---------- HOME ---------- */
+function home(){const pin=new URLSearchParams(location.search).get('pin')||'';
+page(`<div class="card center" style="flex:1;display:flex;flex-direction:column;gap:18px"><h1>¡Aprende jugando!</h1><p class="mut" style="font-size:1.2rem">Preguntas en tiempo real para toda el aula</p>
+<div class="grid2" style="width:100%;flex:0"><div class="card"><h2>🎮 Soy estudiante</h2><br><input id="pin" inputmode="numeric" maxlength="6" placeholder="PIN del juego" value="${esc(pin)}"><button class="btn" id="go">Entrar</button></div>
+<div class="card"><h2>👩‍🏫 Soy docente</h2><br><button class="btn pu" id="host">Crear partida</button><p class="mut" style="margin-top:12px">Tú espectas y controlas; los alumnos juegan desde sus celulares.</p></div></div></div>`);
+$('#go').onclick=()=>{const p=$('#pin').value.trim();p.length===6?joinForm(p):alert('El PIN tiene 6 dígitos')};$('#host').onclick=hostSetup;if(pin.length===6)joinForm(pin)}
+/* ---------- ALUMNO ---------- */
+let me={av:0};
+function joinForm(pin){const saved=JSON.parse(localStorage.getItem('live_'+pin)||'null');if(saved){return socket.emit('player:join',{pin,pid:saved.pid},r=>r.ok?(T='p',wait(r.me)):localStorage.removeItem('live_'+pin)||joinForm(pin))}
+page(`<div class="card" style="flex:1"><h2>Elige tu personaje</h2><br><div class="avs" id="avs">${AV.map((_,i)=>`<button class="pick ${i===me.av?'on':''}" data-i="${i}">${avatar(i)}</button>`).join('')}</div><br><input id="nick" maxlength="14" placeholder="Tu apodo"><p id="err" style="color:#ffb3b3;font-weight:800;margin-bottom:10px"></p><button class="btn" id="ok">¡Listo!</button></div>`,'PIN <b>'+pin+'</b>');
+$('#avs').onclick=e=>{const b=e.target.closest('.pick');if(!b)return;me.av=+b.dataset.i;document.querySelectorAll('.pick').forEach(x=>x.classList.toggle('on',x===b))};
+$('#ok').onclick=()=>socket.emit('player:join',{pin,nick:$('#nick').value,avatar:me.av},r=>{if(!r.ok)return $('#err').textContent=r.error;localStorage.setItem('live_'+pin,JSON.stringify({pid:r.pid}));T='p';wait(r.me)})}
+let mine=null;
+function wait(m){mine=m;page(`<div class="card center" style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px"><div style="width:min(55vw,220px)">${avatar(m.avatar)}</div><h1>${esc(m.nick)}</h1><h2 class="mut">¡Estás dentro! Mira la pantalla del docente…</h2></div>`)}
+socket.on('question',q=>{off=q.now-Date.now();if(T==='h')return hostQ(q);if(T!=='p')return;
+ page(`<div class="me">${avatar(mine.avatar)}<span>${esc(mine.nick)}</span><span style="margin-left:auto">${q.index+1}/${q.total}</span></div><div class="bar"><b id="tb" style="width:100%"></b></div><div class="q">${esc(q.text)}</div><div class="opts" id="op" style="flex:1">${q.options.slice(0,4).map((o,i)=>`<button class="o s${i}" data-i="${i}"><span class="sh">${SH[i]}</span><span>${esc(o)}</span></button>`).join('')}</div>`);
+ timer(q.endsAt,q.time,(l,p)=>{const b=$('#tb');if(b)b.style.width=p*100+'%'});
+ $('#op').onclick=e=>{const b=e.target.closest('.o');if(!b)return;socket.emit('player:answer',+b.dataset.i);buzz(40);b.classList.add('win');$('#op').querySelectorAll('.o').forEach(x=>{x.disabled=true;if(x!==b)x.classList.add('dim')})}});
+socket.on('result',r=>{if(T!=='p')return;clearInterval(tick);buzz(r.correct?[60,40,60]:200);
+ page(`<div class="card res ${r.correct?'ok':'ko'} center" style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px"><div class="big">${r.correct?'✔':r.answered?'✖':'⏰'}</div><h1>${r.correct?'¡Correcto!':r.answered?'Incorrecto':'Sin respuesta'}</h1>${r.correct?`<h2>+${r.gained} puntos</h2>`:''}${r.streak>1?`<h2>🔥 Racha x${r.streak}</h2>`:''}<h2>Puesto ${r.rank} de ${r.of} · ${r.score} pts</h2></div>`)});
+socket.on('ended',e=>{if(T==='h')return hostEnd(e);const i=e.board.find(b=>b.nick===(mine&&mine.nick));page(`<div class="card center" style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px"><div style="width:min(40vw,160px)">${avatar(mine.avatar)}</div><h1>${i?(i.rank<=3?['🥇','🥈','🥉'][i.rank-1]:'🎉'):''} Puesto ${i?i.rank:'-'}</h1><h2>${i?i.score:0} puntos</h2><button class="btn sm pu" onclick="location.href=location.pathname">Salir</button></div>`)});
+socket.on('kicked',()=>{alert('El docente te sacó de la sala');location.href=location.pathname});socket.on('closed',()=>{alert('La partida terminó');location.href=location.pathname});
+/* ---------- DOCENTE (espectador) ---------- */
+let room={players:[]},cfg=null;
+function bank(){let q;try{q=App.storage.getQuestions()}catch(e){q=App.seedData.questions}
+ const cat={},dif={};try{App.storage.getCategories().forEach(c=>cat[c.id]=c.nombre);App.storage.getDifficulties().forEach(d=>dif[d.id]=d.nombre)}catch(e){App.seedData.categories.forEach(c=>cat[c.id]=c.nombre);App.seedData.difficulties.forEach(d=>dif[d.id]=d.nombre)}
+ return{q:q.map(x=>({enunciado:x.enunciado,opciones:x.opciones,respuesta_correcta:x.respuesta_correcta,categoria:cat[x.category_id]||'',cat_id:x.category_id,dificultad:dif[x.difficulty_id]||'Fácil'})),cat}}
+function hostSetup(){const b=bank();page(`<div class="card" style="flex:1;max-width:760px;width:100%;margin:auto"><h2>Configurar partida</h2><br>
+<input id="key" type="password" placeholder="Clave de docente (si el servidor la pide)"><select id="cat"><option value="">Todas las categorías (${b.q.length} preguntas)</option>${Object.entries(b.cat).map(([k,v])=>`<option value="${k}">${esc(v)}</option>`).join('')}</select>
+<select id="n"><option>5</option><option selected>10</option><option>15</option><option value="99">Todas</option></select><select id="t"><option>10</option><option selected>20</option><option>30</option><option>45</option></select>
+<p class="mut" style="margin:-4px 0 12px">Preguntas · luego segundos por pregunta (2.º selector)</p><p id="err" style="color:#ffb3b3;font-weight:800"></p><button class="btn pu" id="mk">Crear sala</button></div>`);
+$('#mk').onclick=()=>{let q=b.q.filter(x=>!$('#cat').value||x.cat_id===$('#cat').value).sort(()=>Math.random()-.5).slice(0,+$('#n').value);
+ q=q.map(x=>{const idx=x.opciones.map((_,i)=>i).sort(()=>Math.random()-.5);return{...x,opciones:idx.map(i=>x.opciones[i]),respuesta_correcta:idx.indexOf(x.respuesta_correcta)}});
+ socket.emit('host:create',{key:$('#key').value,questions:q,time:+$('#t').value},r=>{if(!r.ok)return $('#err').textContent=r.error;T='h';cfg=r;sessionStorage.setItem('host',JSON.stringify(r));hostLobby()})}}
+function hostLobby(){const url=location.origin+'/?pin='+cfg.pin;page(`<div class="grid2"><div class="card center" style="display:flex;flex-direction:column;justify-content:center;gap:12px"><p class="mut" style="font-size:1.3rem">Entra a <b>${esc(location.host)}</b> con el PIN</p><div class="pin">${cfg.pin}</div><p class="mut">o abre <b style="word-break:break-all">${esc(url)}</b></p><button class="btn" id="st" disabled>▶ Empezar</button></div>
+<div class="card"><h2>Jugadores <span id="np">0</span></h2><br><div class="pl" id="pl"></div></div></div>`,'<button class="btn rd sm" id="cl">Cerrar sala</button>');
+$('#st').onclick=()=>socket.emit('host:start');$('#cl').onclick=()=>{if(confirm('¿Cerrar la sala?')){socket.emit('host:close');sessionStorage.removeItem('host');location.href=location.pathname}};drawPl()}
+function drawPl(){const p=$('#pl');if(!p)return;p.innerHTML=room.players.map(x=>`<div class="chip ${x.online?'':'off'}" data-id="${x.id}" title="Clic para expulsar">${avatar(x.avatar)}${esc(x.nick)}</div>`).join('');$('#np').textContent=room.players.length;$('#st').disabled=!room.players.length;p.onclick=e=>{const c=e.target.closest('.chip');if(c&&confirm('¿Expulsar?'))socket.emit('host:kick',c.dataset.id)}}
+socket.on('lobby',l=>{room=l;if(T==='h')drawPl()});
+let hq=null;
+function hostQ(q){hq=q;page(`<div style="display:flex;align-items:center;gap:16px"><div class="tm" id="tm">${q.time}</div><div style="flex:1"><div class="bar"><b id="tb" style="width:100%"></b></div><p class="mut" style="margin-top:6px;font-weight:800">Pregunta ${q.index+1}/${q.total} · ${esc(q.category)} · ${esc(q.diff)}</p></div><div class="card" style="padding:10px 22px;font-weight:900;font-size:1.4rem" id="pg">0 respondieron</div><button class="btn sm pu" id="rv" style="width:auto">Mostrar respuesta</button></div>
+<div class="card" style="display:grid;place-items:center;flex:1"><div class="q" style="font-size:clamp(1.5rem,4vw,3.4rem)">${esc(q.text)}</div></div><div class="opts" id="op">${q.options.slice(0,4).map((o,i)=>`<div class="o s${i}" style="cursor:default"><span class="sh">${SH[i]}</span><span>${esc(o)}</span><span class="cnt" style="display:none"></span></div>`).join('')}</div>`);
+$('#rv').onclick=()=>socket.emit('host:reveal');timer(q.endsAt,q.time,(l,p)=>{const a=$('#tm');if(a)a.textContent=Math.ceil(l);const b=$('#tb');if(b)b.style.width=p*100+'%'})}
+socket.on('progress',p=>{const e=$('#pg');if(e&&T==='h')e.textContent=p.answered+'/'+p.total+' respondieron'});
+socket.on('reveal',r=>{if(T!=='h')return;clearInterval(tick);document.querySelectorAll('#op .o').forEach((o,i)=>{o.classList.toggle('dim',i!==r.right);o.classList.toggle('win',i===r.right);const c=o.querySelector('.cnt');c.style.display='';c.textContent=r.counts[i]});
+ const rv=$('#rv');rv.textContent=r.last?'🏁 Ver resultados':'Siguiente ▶';rv.onclick=()=>socket.emit('host:next');
+ const t=$('#pg');t.innerHTML='🏆 '+r.top.slice(0,3).map(x=>`${esc(x.nick)} ${x.score}`).join(' · ')});
+function hostEnd(e){const b=e.board;const pod=[1,0,2].map(i=>b[i]).filter(Boolean);const h=[170,230,130];
+page(`<div class="card"><h1 style="text-align:center">🏆 ¡Resultados!</h1><div class="pod">${[b[1],b[0],b[2]].map((p,i)=>p?`<div>${avatar(p.avatar)}<div>${esc(p.nick)}</div><div class="st" style="height:${[150,210,110][i]}px">${p.score}</div></div>`:'').join('')}</div></div>
+<div class="card" style="flex:1">${b.map(p=>`<div class="row"><span class="rk">${p.rank}</span>${avatar(p.avatar)}<span>${esc(p.nick)}</span><span class="sc">${p.score}</span></div>`).join('')}<br><button class="btn sm pu" id="csv">⬇ Descargar CSV</button> <button class="btn sm rd" id="ex">Cerrar sala</button></div>`);
+$('#csv').onclick=()=>{const t='Puesto,Apodo,Puntos\n'+b.map(p=>`${p.rank},"${p.nick}",${p.score}`).join('\n');const a=document.createElement('a');a.href=URL.createObjectURL(new Blob(['\ufeff'+t],{type:'text/csv'}));a.download='resultados-'+cfg.pin+'.csv';a.click()};
+$('#ex').onclick=()=>{socket.emit('host:close');sessionStorage.removeItem('host');location.href=location.pathname}}
+/* reconexión */
+socket.on('connect',()=>{const h=sessionStorage.getItem('host');if(h&&T==='h'){const d=JSON.parse(h);socket.emit('host:rejoin',d,()=>{})}else{const pin=Object.keys(localStorage).find(k=>k.startsWith('live_')&&T==='p');if(pin)socket.emit('player:join',{pin:pin.slice(5),pid:JSON.parse(localStorage[pin]).pid},()=>{})}});
+home();
+</script></body></html>
