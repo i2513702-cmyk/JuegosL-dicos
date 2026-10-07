@@ -250,6 +250,20 @@
     if (prog) { prog.click(); await wait(150); }
     step((document.body.textContent || '').includes('Mi progreso') && !!$('.stat-card'), 'vista estudiante: progreso con estadísticas');
 
+    /* ---- regresión: player_id huérfano se auto-repara ---- */
+    try {
+      var uStu = App.auth.who();
+      App.storage.update('users', uStu.id, { player_id: 'id_inexistente_' + Date.now() });
+      App.go('inicio');
+      await wait(200);
+      var appTxt = (document.getElementById('app').textContent || '');
+      step(!!App.auth.currentPlayer() &&
+           !appTxt.includes('Necesitas iniciar sesión como alumno') &&
+           !appTxt.includes('Debes iniciar sesión como alumno') &&
+           appTxt.includes('Unirse a la partida'),
+        'estudiante con player_id huérfano: se repara y no pide iniciar sesión');
+    } catch (e) { step(false, 'regresión player_id huérfano: excepción ' + e.message); }
+
     /* ---- motores: preguntas y progresión ---- */
     try {
       var qe = App.questionEngine.createEngine({ courseId: App.storage.getCourses()[0].id, categoryId: '', difficultyId: '' });
@@ -405,9 +419,10 @@
               });
               step(tapers.length === 0, 'juego ' + mode + ': nada opaco tapa la escena (' + tapers.length + ' tapando)');
 
+              var erNow = escena.getBoundingClientRect();
               var enAsfalto = $$('.tr-token', host).filter(function (t) {
                 var r = t.getBoundingClientRect();
-                var ry = (r.top + r.height / 2 - er.top) / er.height * 380;
+                var ry = (r.top + r.height / 2 - erNow.top) / erNow.height * 380;
                 return ry >= 190 && ry <= 380 && r.width > 0;
               });
               if (mode === 'carrera') {
@@ -422,19 +437,6 @@
                 var minW = toksC.length ? Math.min.apply(null, anchos) : 0;
                 var minH = toksC.length ? Math.min.apply(null, altos) : 0;
                 step(minW >= 40 && minH >= 40, 'juego carrera: los avatares se ven con tamano real (min ' + minW + 'x' + minH + ' px)');
-              }
-
-              if (mode === 'carrera') {
-                var dbgT = $$('.tr-token', host)[0];
-                var dbgP = dbgT.parentElement, dbgG = dbgP.parentElement;
-                var rS = dbgT.closest('.escena').getBoundingClientRect();
-                step(false, 'DEBUG escena:' + Math.round(rS.left) + ',' + Math.round(rS.top) + ' ' + Math.round(rS.width) + 'x' + Math.round(rS.height) +
-                  ' | tokens=' + $$('.tr-token', host).map(function (t, i) {
-                    var r = t.getBoundingClientRect();
-                    return i + ':' + Math.round(r.left) + ',' + Math.round(r.top) + ' ' + Math.round(r.width) + 'x' + Math.round(r.height) +
-                      ' [' + t.style.left + '/' + t.style.top + '] padre:' + Math.round(t.parentElement.getBoundingClientRect().top) +
-                      ' h' + Math.round(t.parentElement.getBoundingClientRect().height);
-                  }).join('  '));
               }
 
               /* la zona de preguntas/marcador queda FUERA de la escena, abajo */

@@ -18,8 +18,9 @@ App.auth = (function () {
 
   function currentPlayer() {
     const u = who();
-    if (!u || !u.player_id) return null;
-    return App.storage.getById('players', u.player_id);
+    if (!u) return null;
+    /* repara la ficha vinculada si falta o quedó huérfana */
+    return App.storage.ensurePlayer(u);
   }
 
   function login(usuario, clave) {

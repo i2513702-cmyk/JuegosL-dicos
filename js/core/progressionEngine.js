@@ -100,6 +100,11 @@ App.progression = (function () {
   function recordAnswer(player, opts) {
     /* opts: {question, selectedIndex, difficultyId, mode, courseId} */
     const correct = App.questionEngine.check(opts.question, opts.selectedIndex);
+    if (!player) {
+      /* la ficha del participante no existe (registro borrado o sincronizado):
+         no hay a quién sumarle recompensas, pero la respuesta sigue siendo válida */
+      return { correct: correct, rewards: computeRewards(opts.difficultyId, 0, correct), achievements: [], question: opts.question };
+    }
     const oldStreak = player.racha || 0;
     const newStreak = correct ? oldStreak + 1 : 0;
     player.racha = newStreak;
@@ -147,6 +152,7 @@ App.progression = (function () {
   }
 
   function awardWin(player, mode) {
+    if (!player) return { bonuses: { xp: 0, monedas: 0 }, achievements: [] };
     const wins = player.modosGanados || [];
     if (wins.indexOf(mode) === -1) wins.push(mode);
     player.modosGanados = wins;
@@ -176,6 +182,7 @@ App.progression = (function () {
   }
 
   function useSkill(player, skillId) {
+    if (!player) return false;
     ensureSkills(player);
     if (!player.skills[skillId]) return false;
     player.skills[skillId]--;
@@ -184,6 +191,7 @@ App.progression = (function () {
   }
 
   function hasSkill(player, skillId) {
+    if (!player) return false;
     ensureSkills(player);
     return player.skills[skillId] > 0;
   }

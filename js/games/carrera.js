@@ -17,7 +17,10 @@ App.games.carrera = (function (ui) {
       difficultyId: config.difficultyId
     });
     const TOTAL = config.trackLength || 14;
-    const OBSTACLES = [3, 6, 9, 11];
+    /* Obstaculos fuera del tramo inicial: la primera casilla de RACHA bonifica +2
+       (streak>=2) y un obstaculo ahi (-2) cancelaba el avance y devolvia a los
+       corredores a su posicion previa. Se evitan cadenas (13 -> 11, 9 -> 7). */
+    const OBSTACLES = [6, 9, 13];
     const colors = ['rojo', 'verde', 'azul', 'amarillo'];
 
     const players = config.players.map((p, i) => ({
@@ -36,6 +39,10 @@ App.games.carrera = (function (ui) {
        esa pintura, sin recuadros propios. */
     const inScene = !!config.escenaCapa;
     const SCENE = { W: 680, H: 380, ROAD_TOP: 190, ROAD_BOTTOM: 380, START_X: 14, FINISH_X: 600 };
+    /* el avatar mide 11% del ancho de la pista (ver .tr-en-escena .tr-token.tr-token-avatar);
+       usar un half fijo evita que el clamp salte al primer repintado, cuando
+       offsetWidth todavia no esta resuelto (los dos corredores se desplazaban). */
+    const TOKEN_HALF = SCENE.W * 0.11 / 2;
     const track = ui.el('div', 'track-wrap' + (inScene ? ' tr-en-escena' : ''), '');
     const cells = ui.el('div', 'track-cells', '');
     if (!inScene) {
@@ -59,15 +66,27 @@ App.games.carrera = (function (ui) {
 
     /* coloca un elemento sobre el asfalto del SVG (en % de la escena).
        El ancho del avatar se descuenta para que no sobresalga por los lados. */
-    function placeOnRoad(node, pos, lane, half) {
+    function placeOnRoad(node, pos, lane, half, dx, dy) {
       half = half || node.offsetWidth / 2 || 17;
       const min = SCENE.START_X + half + 2;
       const max = SCENE.FINISH_X - half - 2;
-      let x = SCENE.START_X + (pos / TOTAL) * (SCENE.FINISH_X - SCENE.START_X);
+      let x = SCENE.START_X + (pos / TOTAL) * (SCENE.FINISH_X - SCENE.START_X) + (dx || 0);
       x = Math.max(min, Math.min(max, x));
-      const y = 247 + (lane % 2) * 76;   /* los dos carriles centrales del asfalto */
+      const y = 247 + (lane % 2) * 76 + (dy || 0);   /* los dos carriles centrales del asfalto */
       node.style.left = (x / SCENE.W * 100) + '%';
       node.style.top = ((y - SCENE.ROAD_TOP) / (SCENE.ROAD_BOTTOM - SCENE.ROAD_TOP) * 100) + '%';
+    }
+
+    /* Varias fichas en la MISMA casilla y carril se apilan exactamente (parece una
+       sola) y, al separarse, "aparece" una copia del primer personaje. Se dispersan
+       un poco para que cada corredor se distinga siempre. */
+    function crowdOffset(pos, i) {
+      const mates = [];
+      players.forEach((p, j) => {
+        if (j !== i && p.pos === pos && (j % 2) === (i % 2)) mates.push(j);
+      });
+      const order = mates.filter((j) => j < i).length;
+      return ([[0, 0], [-9, -9], [9, -9], [0, -14]][order]) || [0, 0];
     }
 
     const tokenEls = [];
@@ -102,7 +121,8 @@ App.games.carrera = (function (ui) {
       players.forEach((p, i) => {
         const t = tokenEls[i];
         if (inScene) {
-          placeOnRoad(t, Math.min(p.pos, TOTAL), i);
+          const off = crowdOffset(Math.min(p.pos, TOTAL), i);
+          placeOnRoad(t, Math.min(p.pos, TOTAL), i, TOKEN_HALF, off[0], off[1]);
         } else {
           t.style.left = (p.pos / TOTAL * 100) + '%';
           t.style.top = (20 + (i % 2) * 34) + '%';
