@@ -132,7 +132,8 @@ App.ui = (function () {
 
     card.appendChild(el('h3', 'q-text text-slate-900', q.enunciado));
 
-    const keys = ['A', 'B', 'C', 'D'];
+    // Kahoot-style icons: ▲ (triangle/red), ◆ (diamond/blue), ● (circle/yellow), ■ (square/green)
+    const SH = ['▲', '◆', '●', '■'];
     const list = el('div', 'grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4');
 
     let hintDisabled = [];
@@ -142,6 +143,8 @@ App.ui = (function () {
     function optionBtn(i, label, text) {
       const btn = el('button', 'opt-btn',
         '<span class="opt-key">' + label + '</span><span class="opt-label">' + text + '</span>');
+      // Add Kahoot color class based on position
+      btn.classList.add('s' + i);
       btn.addEventListener('click', () => choose(i));
       return btn;
     }
@@ -213,7 +216,7 @@ App.ui = (function () {
       btns.appendChild(db);
     }
 
-    q.opciones.forEach((opc, i) => list.appendChild(optionBtn(i, keys[i], opc)));
+    q.opciones.forEach((opc, i) => list.appendChild(optionBtn(i, SH[i], opc)));
     card.appendChild(list);
     container.appendChild(card);
     if (btns.children.length) container.appendChild(btns);

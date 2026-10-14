@@ -152,7 +152,7 @@ App.roam = (function () {
     });
     container.appendChild(createBtn);
 
-    const list = ui.el('div', 'mt-6 flex flex-col gap-4', '');
+    const list = ui.el('div', 'mt-6 flex flex-col gap-4 lobby-list', '');
     container.appendChild(list);
 
     function renderList() {
@@ -359,7 +359,7 @@ App.roam = (function () {
     });
     card.appendChild(joinBtn);
 
-    const joinedWrap = ui.el('div', 'mt-6', '');
+    const joinedWrap = ui.el('div', 'mt-6 lobby-list', '');
     container.appendChild(joinedWrap);
 
     function renderJoined() {
@@ -582,6 +582,7 @@ App.launchGame = function (opts) {
   };
 
   container.innerHTML = '';
+  container.classList.add('game-view');
   const game = App.games[opts.mode];
   if (!game || !game.init) { container.appendChild(ui.el('p', 'text-sm', 'Modo no implementado.')); return; }
   const ESCENARIOS = {
@@ -593,7 +594,7 @@ App.launchGame = function (opts) {
 
   /* ESCENA: la imagen estatica ES el tablero (con su formato exacto) y el juego
      se dibuja DENTRO de ella (config.escenaCapa), no encima como tarjetas sueltas.
-     El area de preguntas, marcador y habilidades queda fuera, abajo. */
+     El area de preguntas, marcador y habilidades queda en el panel lateral. */
   let escena = null;
   const escDef = ESCENARIOS[opts.mode];
   if (escDef) {
@@ -624,28 +625,25 @@ App.launchGame = function (opts) {
   top.appendChild(back);
   container.appendChild(top);
 
+  /* escenario a un lado y preguntas/HUD al otro (lado a lado en PC, apilado en celular) */
+  const stage = ui.el('div', 'game-stage', '');
+  const board = ui.el('div', 'game-board', '');
+  const side = ui.el('div', 'game-side', '');
+  if (escena) { board.appendChild(escena); stage.appendChild(board); }
+  stage.appendChild(side);
+  container.appendChild(stage);
+
+  /* los juegos dibujan su titulo, marcador, preguntas y habilidades en el panel lateral */
+  config.container = side;
+
   const session = App.session.start(config);
   try {
     game.init(config);
   } catch (e) {
-    container.appendChild(ui.el('div', 'p-4 text-rose-700 bg-rose-50 rounded mt-3', '<b>No se pudo iniciar:</b> ' + esc(e.message)));
+    side.appendChild(ui.el('div', 'p-4 text-rose-700 bg-rose-50 rounded mt-3', '<b>No se pudo iniciar:</b> ' + esc(e.message)));
     App.session.record(config, config.players.map((p) => ({ id: p.id, puntos: 0 })), opts.mode);
     console.error(e);
     return;
-  }
-
-  /* la escena se coloca despues de init (los juegos vacian su contenedor),
-     justo debajo de la barra de salida */
-  if (escena) {
-    container.style.position = 'relative';
-    try {
-      const toolbar = container.firstElementChild;
-      const ref = toolbar && toolbar.parentNode === container ? toolbar.nextSibling : null;
-      if (ref) container.insertBefore(escena, ref);
-      else container.appendChild(escena);
-    } catch (err) {
-      container.appendChild(escena);   /* la escena nunca se queda fuera del tablero */
-    }
   }
   App.roam.navBtn('inicio');
 };
@@ -661,6 +659,7 @@ function route() {
   const app = document.getElementById('app');
   if (!app) return;
   App.ludoInGame = false;
+  app.classList.remove('game-view');
   App.roam.renderUserBar();
   const user = App.auth.who();
   const hash = (location.hash || '#/inicio').replace('#/', '');

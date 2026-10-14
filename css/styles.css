@@ -335,11 +335,11 @@ select.ffield, select { cursor: pointer; }
   padding: 15px 17px; cursor: pointer; font: inherit; transition: all .15s;
   color: #fff; font-weight: 800; font-size: 1.05rem; box-shadow: 0 4px 0 rgba(0,0,0,.25);
 }
-/* los cuatro colores clásicos de Kahoot */
-.opt-btn:nth-child(1) { background: var(--k-red); }
-.opt-btn:nth-child(2) { background: var(--k-blue); }
-.opt-btn:nth-child(3) { background: var(--k-yellow); }
-.opt-btn:nth-child(4) { background: var(--k-green); }
+/* los cuatro colores clásicos de Kahoot - both nth-child and explicit classes */
+.opt-btn:nth-child(1), .opt-btn.s0 { background: var(--k-red); }
+.opt-btn:nth-child(2), .opt-btn.s1 { background: var(--k-blue); }
+.opt-btn:nth-child(3), .opt-btn.s2 { background: var(--k-yellow); }
+.opt-btn:nth-child(4), .opt-btn.s3 { background: var(--k-green); }
 .opt-btn:hover { filter: brightness(1.1); transform: translateY(-1px); }
 .opt-btn:active { transform: translateY(1px); box-shadow: 0 2px 0 rgba(0,0,0,.25); }
 .opt-btn:disabled { cursor: default; filter: none; transform: none; }
@@ -763,3 +763,10 @@ select.ffield, select { cursor: pointer; }
   .nav-tabs { margin-left: 0; }
   .q-text { font-size: 1.15rem; }
 }
+
+/* ------------------------------- layout del juego ------------------------------- */
+/* el tablero (escena) y el panel de preguntas/HUD. En celular se apilan;
+   en PC theme-plus.css los pone lado a lado. */
+.game-stage { display: block; }
+.game-board { width: 100%; min-width: 0; }
+.game-side { width: 100%; min-width: 0; margin-top: 16px; }

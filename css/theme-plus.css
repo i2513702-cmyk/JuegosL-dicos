@@ -1,16 +1,123 @@
-/* LudoApp · theme-plus: más vistoso, a pantalla completa en PC, cómodo en celular */
-body{background:linear-gradient(135deg,#46178f,#1b0b42 50%,#0f2a6b,#46178f)!important;background-size:300% 300%!important;animation:lpbg 20s ease infinite;background-attachment:fixed}
-@keyframes lpbg{50%{background-position:100% 100%}}
-.page{max-width:none!important;width:100%;padding:clamp(14px,2.2vw,32px) clamp(12px,3vw,48px) 60px!important}
-@media(min-width:1100px){.page{display:grid;grid-template-columns:repeat(auto-fit,minmax(420px,1fr));gap:24px;align-content:start}.page>*{min-width:0}.page>:first-child:not(.card):not(.panel){grid-column:1/-1}}
-.card,.panel{border-radius:22px!important;border:1px solid rgba(255,255,255,.16)!important;backdrop-filter:blur(10px);transition:transform .18s,box-shadow .18s}
-.card:hover,.panel:hover{transform:translateY(-3px);box-shadow:0 14px 34px rgba(0,0,0,.35)}
-.site-head{background:linear-gradient(90deg,rgba(70,23,143,.92),rgba(19,104,206,.85))!important}
-.brand{background:linear-gradient(90deg,#ffc800,#ff6b9d);-webkit-background-clip:text;background-clip:text;color:transparent!important;font-size:1.4rem!important}
-.nav-chip,.nav-btn,.btn,button{transition:transform .12s,filter .12s}
-.nav-chip:hover,.nav-btn:hover,.btn:hover{transform:translateY(-2px);filter:brightness(1.12)}
-.nav-chip:active,.btn:active{transform:translateY(3px)}
-.site-foot{text-align:center;padding:18px;color:var(--muted)}
-.live-link{background:linear-gradient(90deg,#e21b3c,#ff6b9d)!important;color:#fff;font-weight:900;padding:8px 16px;border-radius:10px;text-decoration:none;animation:lppulse 2s infinite}
-@keyframes lppulse{50%{box-shadow:0 0 0 8px rgba(226,27,60,.25)}}
-@media(max-width:640px){.site-head{padding:8px 10px}.brand-sub{display:none}.page{padding:12px 10px 40px!important}button,.btn,.nav-chip{min-height:44px}}
+/* ============================================================
+ * LudoApp · theme-plus.css
+ * Aspecto tipo Kahoot (morado animado, tarjetas, tipografía grande),
+ * cómodo en celular y aprovechando el ancho real en PC.
+ * No define geometría de escenas: eso vive en styles.css.
+ * ============================================================ */
+:root { --page-max: 1180px; }
+
+/* ------------------------------- fondo ------------------------------- */
+body {
+  background: linear-gradient(135deg, #46178f, #1b0b42 50%, #0f2a6b, #46178f) !important;
+  background-size: 300% 300% !important;
+  background-attachment: fixed !important;
+  animation: lpbg 22s ease infinite;
+}
+@keyframes lpbg { 50% { background-position: 100% 100%; } }
+
+/* ------------------------------- cabecera ------------------------------- */
+.site-head {
+  background: linear-gradient(90deg, rgba(70,23,143,.95), rgba(19,104,206,.88)) !important;
+  border-bottom: 1px solid rgba(255,255,255,.14);
+  padding: 10px 18px;
+}
+.site-head-inner {
+  display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
+  width: 100%; max-width: var(--page-max); margin: 0 auto;
+}
+.brand {
+  background: linear-gradient(90deg, #ffc800, #ff6b9d);
+  -webkit-background-clip: text; background-clip: text; color: transparent !important;
+  font-size: 1.35rem !important;
+}
+.nav-chip { background: #7c3aed; }
+.nav-btn-active { background: #7c3aed; border-color: #7c3aed; box-shadow: 0 3px 0 #2a0f55; }
+.live-link {
+  background: linear-gradient(90deg, #e21b3c, #ff6b9d) !important;
+  color: #fff; font-weight: 900; padding: 8px 16px; border-radius: 10px;
+  text-decoration: none; box-shadow: 0 3px 0 #9e1230; animation: lppulse 2s infinite;
+}
+@keyframes lppulse { 50% { box-shadow: 0 3px 0 #9e1230, 0 0 0 8px rgba(226,27,60,.22); } }
+
+/* ------------------------------- contenedor ------------------------------- */
+.page {
+  max-width: var(--page-max) !important;
+  width: 100%;
+  margin: 0 auto;
+  padding: clamp(16px, 2.4vw, 34px) clamp(14px, 2.6vw, 32px) 64px !important;
+}
+
+/* ------------------------------- tarjetas ------------------------------- */
+.l-card, .q-card, .podium-card, .stat-card, .shop-row, .rank-row {
+  border-radius: 22px !important;
+  border: 1px solid rgba(255,255,255,.16) !important;
+  backdrop-filter: blur(10px);
+}
+.l-card { transition: transform .18s, box-shadow .18s; }
+.l-card:hover { transform: translateY(-3px); box-shadow: 0 16px 34px rgba(0,0,0,.38); }
+.stat-card { transition: transform .18s, border-color .18s; }
+.stat-card:hover { transform: translateY(-2px); border-color: rgba(255,255,255,.34); }
+
+/* títulos grandes tipo Kahoot */
+.page > h1 { font-size: clamp(1.6rem, 3.2vw, 2.4rem) !important; }
+.hero-title { font-size: clamp(2rem, 4.4vw, 3.1rem) !important; line-height: 1.05; }
+
+/* ------------------------------- login: hero + tarjeta ------------------------------- */
+@media (min-width: 1000px) {
+  .page:has(> .hero-card) {
+    display: grid; grid-template-columns: 1.05fr .95fr; gap: 26px; align-items: stretch;
+  }
+  .page:has(> .hero-card) > .hero-card {
+    margin: 0; min-height: 420px; display: flex; flex-direction: column; justify-content: center;
+  }
+  .page:has(> .hero-card) > .l-card { align-self: start; }
+}
+
+/* ------------------------------- listas de salas ------------------------------- */
+@media (min-width: 900px) {
+  .lobby-list { display: grid !important; grid-template-columns: repeat(auto-fill, minmax(330px, 1fr)); gap: 18px; }
+  .lobby-list > * { margin-top: 0 !important; }
+}
+
+/* ------------------------------- panel docente ------------------------------- */
+@media (min-width: 760px) {
+  .admin-tabs { gap: 8px; }
+}
+.admin-body { display: flex; flex-direction: column; gap: 16px; }
+
+/* ------------------------------- pantalla de juego ------------------------------- */
+@media (min-width: 1000px) {
+  .game-view { padding-top: 20px !important; }
+  .game-stage {
+    display: grid;
+    grid-template-columns: minmax(0, 680px) minmax(320px, 1fr);
+    gap: 26px; align-items: start; justify-content: center;
+  }
+  .game-board { position: sticky; top: 84px; }
+  .game-side { margin-top: 0; }
+}
+
+/* ------------------------------- botones ------------------------------- */
+.btn-primary, .btn-ghost, .btn-danger, .cta-btn, .nav-chip, .nav-btn {
+  transition: transform .12s, box-shadow .12s, filter .12s;
+}
+.btn-primary:hover, .cta-btn:hover, .btn-danger:hover { filter: brightness(1.1); }
+.nav-chip:hover, .nav-btn:hover { transform: translateY(-2px); }
+
+/* ------------------------------- utilidades responsivas ------------------------------- */
+@media (min-width: 640px) { .sm\:grid-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (min-width: 768px) { .md\:grid-cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); } }
+@media (min-width: 768px) { .md\:grid-cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); } }
+
+/* ------------------------------- pie ------------------------------- */
+.site-foot { text-align: center; padding: 18px; color: var(--muted); border-top: 1px solid var(--line); }
+
+/* ------------------------------- celular ------------------------------- */
+@media (max-width: 640px) {
+  .site-head { padding: 8px 10px; }
+  .brand-sub { display: none; }
+  .brand { font-size: 1.1rem !important; }
+  .page { padding: 12px 10px 40px !important; }
+  button, .btn, .nav-chip { min-height: 44px; }
+  .lobby-code { font-size: 1.6rem; }
+}
