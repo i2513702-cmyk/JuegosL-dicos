@@ -467,6 +467,8 @@ if (owner !== -1 && owner < state.players.length) {
     const codigo = config.codigo || NET.codigo() || '';
     const SH = ['▲', '◆', '●', '■'];
     const BOARD = { W: 384, H: 384, CELL: 24, MARGIN: 12 };
+    const META = 56;
+    const COLORES = ['rojo', 'verde', 'azul', 'amarillo'];
 
     let est = NET.estado();
     let preg = NET.pregunta();
@@ -479,8 +481,8 @@ if (owner !== -1 && owner < state.players.length) {
     let partidaVence = venc.partida;
     let enviando = false;
     let vivo = true;
+    const visualPos = {};
 
-    /* ---------- tablero ---------- */
     const enEscena = !!config.escenaCapa;
     const frame = ui.el('div', 'l-board-frame' + (enEscena ? ' l-en-escena' : ''), '');
     frame.innerHTML = '<div class="ludo-grid"></div><div class="ludo-tokens"></div>';
@@ -502,37 +504,38 @@ if (owner !== -1 && owner < state.players.length) {
           BASE_ORIGIN.forEach((o, pi) => { if (r >= o[0] && r <= o[0] + 5 && c >= o[1] && c <= o[1] + 5) owner = pi; });
           const inHome = homeCoord[key];
           if (owner !== -1 && owner < n) {
-            cell.classList.add('l-base', 'l-base-' + ['rojo', 'verde', 'azul', 'amarillo'][owner]);
+            cell.classList.add('l-base', 'l-base-' + COLORES[owner]);
             if (YARD_SLOTS.some((s) => BASE_ORIGIN[owner][0] + s[0] === r && BASE_ORIGIN[owner][1] + s[1] === c)) cell.appendChild(ui.el('span', 'l-yard', ''));
           } else if (key === '7-7') {
             cell.classList.add('l-meta');
             cell.appendChild(ui.el('span', '', '🏆'));
           } else if (inHome !== undefined && inHome < n) {
-            cell.classList.add('l-home', 'l-home-' + ['rojo', 'verde', 'azul', 'amarillo'][inHome]);
+            cell.classList.add('l-home', 'l-home-' + COLORES[inHome]);
           } else if (pathCoord[key] !== undefined) {
             const g = pathCoord[key];
             cell.classList.add('l-path');
-            if (SAFE[g]) cell.appendChild(ui.el('span', 'l-sp', '⭐'));
-            else if (RETO[g]) cell.appendChild(ui.el('span', 'l-sp', '❓'));
-            else if (AVANCE[g]) cell.appendChild(ui.el('span', 'l-sp', '⬆'));
-            else if (RETRO[g]) cell.appendChild(ui.el('span', 'l-sp', '⏪'));
+            if (SAFE[g]) cell.appendChild(ui.el('span', 'l-sp l-star', '⭐'));
+            else if (RETO[g]) cell.appendChild(ui.el('span', 'l-sp l-reto', '❓'));
+            else if (AVANCE[g]) cell.appendChild(ui.el('span', 'l-sp l-up', '⬆'));
+            else if (RETRO[g]) cell.appendChild(ui.el('span', 'l-sp l-back', '⏪'));
+            cell.appendChild(ui.el('span', 'l-idx', String(g)));
           } else cell.classList.add('l-empty');
           gridEl.appendChild(cell);
         }
       }
     }
 
-    const META = 56;
-    function celdaDe(asiento, pos) {
+    function celdaDe(asiento, pos, tokIdx) {
       if (pos < 0) {
         const o = BASE_ORIGIN[asiento] || BASE_ORIGIN[0];
-        const s = YARD_SLOTS[0];
+        const s = YARD_SLOTS[tokIdx || 0];
         return [o[0] + s[0], o[1] + s[1]];
       }
       if (pos >= META) return CENTER.slice();
       if (pos < 51) return PATH[(START[asiento] + pos) % 52].slice();
       return (HOME_STRETCH[asiento] || HOME_STRETCH[0])[Math.min(4, pos - 51)].slice();
     }
+
     function pct(rc) {
       if (enEscena) {
         const x = BOARD.MARGIN + rc[1] * BOARD.CELL + BOARD.CELL / 2;
@@ -542,23 +545,32 @@ if (owner !== -1 && owner < state.players.length) {
       return { left: (rc[1] + 0.5) / N * 100, top: (rc[0] + 0.5) / N * 100 };
     }
 
-    const COLORES = ['rojo', 'verde', 'azul', 'amarillo'];
     const listaAsientos = () => (est ? est.asientos : (NET.sala() ? NET.sala().jugadores : []));
+    const tokenEls = {};
+
+    function resolveAvatar(a, i) {
+      if (a && typeof a.avatar === 'object' && a.avatar) return a.avatar;
+      return App.avatars.pick(((a && +a.avatar) || i) % 16);
+    }
 
     function asegurarFichas() {
       const lista = listaAsientos();
       if (!lista.length) return;
-      if (tokensEl.childElementCount === lista.length) return;
+      if (tokensEl.childElementCount === lista.length * 4) return;
       tokensEl.innerHTML = '';
-      lista.forEach((a, i) => {
-        const dot = ui.el('div', 'l-token l-token-' + (a.color || COLORES[i % 4]), '');
-        const cnv = document.createElement('canvas');
-        cnv.width = cnv.height = 26;
-        cnv.className = 'avatar-canvas';
-        const g = cnv.getContext('2d');
-        App.avatars.drawIcon(g, 5, 5, 1, App.avatars.pick((+a.avatar || i) % 5), 'right');
-        dot.appendChild(cnv);
-        tokensEl.appendChild(dot);
+      lista.forEach((a, pi) => {
+        if (visualPos[pi] === undefined) visualPos[pi] = (est && typeof a.pos === 'number') ? a.pos : -1;
+        for (let ti = 0; ti < 4; ti++) {
+          const dot = ui.el('div', 'l-token l-token-' + (a.color || COLORES[pi % 4]), '');
+          const cnv = document.createElement('canvas');
+          cnv.width = cnv.height = 26;
+          cnv.className = 'avatar-canvas';
+          const g = cnv.getContext('2d');
+          App.avatars.drawIcon(g, 5, 5, 1, resolveAvatar(a, pi), 'right');
+          dot.appendChild(cnv);
+          tokensEl.appendChild(dot);
+          tokenEls[pi + '-' + ti] = dot;
+        }
       });
     }
 
@@ -566,32 +578,67 @@ if (owner !== -1 && owner < state.players.length) {
       const lista = listaAsientos();
       if (!lista.length) return;
       asegurarFichas();
-      const dots = tokensEl.children;
       const n = lista.length;
-      const ocupadas = lista.map((a, i) => celdaDe(i, est ? a.pos : -1).join(','));
-      lista.forEach((a, i) => {
-        const dot = dots[i];
-        if (!dot) return;
-        const rc = celdaDe(i, est ? a.pos : -1);
-        const p = pct(rc);
-        const repetida = est && a.pos >= 0 && ocupadas.some((o, k) => k !== i && o === rc.join(','));
-        const dx = repetida ? (i - (n - 1) / 2) * 1.4 : 0;
-        dot.style.left = (p.left + dx) + '%';
-        dot.style.top = p.top + '%';
+      const ocupadas = lista.map((_, i) => celdaDe(i, visualPos[i] !== undefined ? visualPos[i] : -1, 0).join(','));
+      lista.forEach((a, pi) => {
+        for (let ti = 0; ti < 4; ti++) {
+          const dot = tokenEls[pi + '-' + ti];
+          if (!dot) continue;
+          const pos = ti === 0 ? (visualPos[pi] !== undefined ? visualPos[pi] : (est ? a.pos : -1)) : -1;
+          const rc = celdaDe(pi, pos, ti);
+          const p = pct(rc);
+          const repetida = ti === 0 && pos >= 0 && ocupadas.some((o, k) => k !== pi && o === rc.join(','));
+          const dx = repetida ? (pi - (n - 1) / 2) * 1.6 : 0;
+          dot.style.left = (p.left + dx) + '%';
+          dot.style.top = p.top + '%';
+          dot.style.zIndex = pos >= META ? 30 : (ti === 0 ? 15 : 10);
+        }
       });
     }
 
-    /* ---------- panel lateral ---------- */
-    const hd = ui.el('div', 'text-sm text-slate-300', '');
-    const tm = ui.el('div', 'text-sm font-bold text-amber-300', '');
-    const act = ui.el('div', '', '');
-    const pl = ui.el('div', 'flex flex-wrap gap-2 justify-center', '');
-    const lg = ui.el('div', 'text-xs text-slate-400 space-y-1', '');
+    function stepsAnimNet(pi, fromPos, toPos) {
+      const dot = tokenEls[pi + '-0'];
+      if (dot) dot.classList.add('l-run');
+      let cur = fromPos;
+      return new Promise((resolve) => {
+        const step = () => {
+          if (cur === toPos) {
+            if (dot) dot.classList.remove('l-run');
+            return resolve();
+          }
+          cur += (toPos > cur ? 1 : -1);
+          visualPos[pi] = cur;
+          colocar();
+          setTimeout(step, 220);
+        };
+        setTimeout(step, 30);
+      });
+    }
+
+    /* ---------- HUD idéntico al local ---------- */
+    root.innerHTML = '';
+    const hd = ui.el('div', 'text-xs text-slate-400 text-center mb-1', '');
+    const tm = ui.el('div', 'text-xs font-bold text-amber-400 text-center mb-2', '');
+    const hud = ui.el('div', 'space-y-3 mt-1', '');
+    hud.innerHTML = [
+      '<div class="flex items-center justify-between">',
+      '<div id="lu-turn-net" class="font-bold text-sm flex items-center gap-1"></div>',
+      '<div class="flex items-center gap-2"><span class="text-xs text-slate-500">Dado</span><div id="lu-dice-net" class="dice-box">🎲</div></div>',
+      '</div>',
+      '<div id="lu-players-net" class="flex flex-wrap gap-2 justify-center"></div>'
+    ].join('');
+    const act = ui.el('div', 'mt-3', '');
+    const lg = ui.el('div', 'text-xs text-slate-400 space-y-1 mt-3', '');
+
     root.appendChild(hd);
     root.appendChild(tm);
+    root.appendChild(hud);
     root.appendChild(act);
-    root.appendChild(pl);
     root.appendChild(lg);
+
+    const turnEl = hud.querySelector('#lu-turn-net');
+    const diceEl = hud.querySelector('#lu-dice-net');
+    const pl = hud.querySelector('#lu-players-net');
 
     const yo = () => (rol === 'docente' ? null : NET.yo());
     const esMiTurno = () => est && est.espera && est.espera.asiento === yo();
@@ -599,6 +646,18 @@ if (owner !== -1 && owner < state.players.length) {
       const lista = listaAsientos();
       return (lista[a] && lista[a].nombre) || ('Jugador ' + (a + 1));
     };
+
+    function animarDadoNet(valFinal) {
+      let n = 0;
+      const timer = setInterval(() => {
+        diceEl.textContent = 1 + Math.floor(Math.random() * 6);
+        ui.sound('dice');
+        if (++n >= 10) {
+          clearInterval(timer);
+          diceEl.textContent = valFinal;
+        }
+      }, 55);
+    }
 
     function reloj() {
       const now = Date.now() + off;
@@ -615,12 +674,22 @@ if (owner !== -1 && owner < state.players.length) {
       pl.innerHTML = '';
       const lista = listaAsientos();
       const sala = NET.sala();
+      const actIdx = (est && est.espera) ? est.espera.asiento : 0;
+      const actP = lista[actIdx];
+
+      if (turnEl && actP) {
+        turnEl.innerHTML = '';
+        turnEl.appendChild(App.avatars.badge(resolveAvatar(actP, actIdx), 24));
+        turnEl.appendChild(document.createTextNode(' Turno de '));
+        turnEl.appendChild(ui.el('b', '', esc(actP.nombre)));
+      }
+
       lista.forEach((a, i) => {
         const online = !sala || !sala.jugadores[i] || sala.jugadores[i].online;
-        const chip = ui.el('div', 'l-chip' + (est && est.espera && est.espera.asiento === i ? ' l-chip-active' : ''), '');
-        chip.appendChild(App.avatars.badge(App.avatars.pick((+a.avatar || i) % 5), 22));
+        const chip = ui.el('div', 'l-chip' + (actIdx === i ? ' l-chip-active' : ''), '');
+        chip.appendChild(App.avatars.badge(resolveAvatar(a, i), 22));
         chip.appendChild(ui.el('span', 'text-xs font-semibold', esc(a.nombre) + (yo() === i ? ' (tú)' : '')));
-        const pos = est ? (a.pos < 0 ? 'base' : a.pos >= META ? 'meta' : 'casilla ' + (a.pos + 1)) : '';
+        const pos = est ? (a.pos < 0 ? 'En base' : a.pos >= META ? '🏆 META' : 'Casilla ' + (a.pos + 1) + '/56') : '';
         chip.appendChild(ui.el('span', 'l-chip-pos', pos + (online ? '' : ' · desconectado')));
         pl.appendChild(chip);
       });
@@ -628,27 +697,41 @@ if (owner !== -1 && owner < state.players.length) {
 
     function pintarLog() {
       lg.innerHTML = '';
-      if (!log.length) { lg.appendChild(ui.el('span', '', 'Todavía nada…')); return; }
-      log.slice(0, 6).forEach((l) => lg.appendChild(ui.el('div', '', esc(l))));
+      if (!log.length) return;
+      log.slice(0, 5).forEach((l) => lg.appendChild(ui.el('div', '', esc(l))));
     }
 
     function registrar(evs) {
       (evs || []).forEach((ev) => {
         let t = null;
-        if (ev.t === 'dado') t = '🎲 ' + nombre(ev.asiento) + ' sacó ' + ev.valor;
-        else if (ev.t === 'respondida') t = (ev.correcto ? '✅ ' : '❌ ') + nombre(ev.asiento) + (ev.correcto ? ' acertó' : ' falló');
-        else if (ev.t === 'especial') t = ev.tipo === 'avance' ? '⬆ ' + nombre(ev.asiento) + ' avanza +2' : ev.tipo === 'retroceso' ? '⏪ ' + nombre(ev.asiento) + ' retrocede 2' : '❓ ' + nombre(ev.asiento) + ' cae en un reto';
-        else if (ev.t === 'turno-saltado') t = '⏭ Turno de ' + nombre(ev.asiento) + ' saltado (' + ({ tiempo: 'tiempo', desconexion: 'desconectado', docente: 'lo saltó el docente' }[ev.motivo] || ev.motivo) + ')';
-        if (!t) return;
-        log.unshift(t);
-        if (ev.t === 'respondida') {
+        if (ev.t === 'dado') {
+          t = '🎲 ' + nombre(ev.asiento) + ' sacó ' + ev.valor;
+          animarDadoNet(ev.valor);
+          ui.toast(nombre(ev.asiento) + ' lanzó un ' + ev.valor, 'info');
+        } else if (ev.t === 'respondida') {
+          t = (ev.correcto ? '✅ ' : '❌ ') + nombre(ev.asiento) + (ev.correcto ? ' acertó' : ' falló');
           if (ev.asiento === yo()) {
             ui.sound(ev.correcto ? 'correct' : 'wrong');
-            ui.toast(ev.correcto ? '✅ ¡Correcto!' : '❌ Incorrecto', ev.correcto ? 'success' : 'error');
+            ui.toast(ev.correcto ? '✅ ¡Correcto!' : '❌ Incorrecto: no avanza', ev.correcto ? 'success' : 'error');
           }
+        } else if (ev.t === 'especial') {
+          if (ev.tipo === 'avance') {
+            t = '⬆ ' + nombre(ev.asiento) + ' avanza +2';
+            ui.toast('⬆️ Avance rápido +2', 'warn');
+          } else if (ev.tipo === 'retroceso') {
+            t = '⏪ ' + nombre(ev.asiento) + ' retrocede 2';
+            ui.toast('⏪ Retroceso -2', 'error');
+            ui.shake(frame);
+          } else {
+            t = '❓ ' + nombre(ev.asiento) + ' cae en un reto';
+            ui.toast('❓ RETO: pregunta extra para +2', 'warn');
+          }
+        } else if (ev.t === 'turno-saltado') {
+          t = '⏭ Turno de ' + nombre(ev.asiento) + ' saltado';
         }
+        if (t) log.unshift(t);
       });
-      log = log.slice(0, 6);
+      log = log.slice(0, 5);
     }
 
     function preguntar() {
@@ -679,7 +762,7 @@ if (owner !== -1 && owner < state.players.length) {
       });
       card.appendChild(list);
       act.appendChild(card);
-      if (!puedo) act.appendChild(ui.el('p', 'text-xs text-slate-400 mt-2', nombre(est.espera.asiento) + ' está respondiendo…'));
+      if (!puedo) act.appendChild(ui.el('p', 'text-xs text-slate-400 mt-2 text-center', nombre(est.espera.asiento) + ' está respondiendo…'));
     }
 
     function pintarFinal() {
@@ -687,15 +770,15 @@ if (owner !== -1 && owner < state.players.length) {
       if (!f) return;
       const g = (f.clasificacion || []).find((c) => c.asiento === f.ganador);
       act.innerHTML = '';
-      act.appendChild(ui.el('div', 'fin-title', '🏆 ' + esc(g ? g.nombre : nombre(f.ganador))));
-      act.appendChild(ui.el('p', 'text-sm text-slate-400 text-center',
-        f.motivo === 'meta' ? 'llegó primero a la meta' : 'iba más adelantado cuando se acabó el tiempo'));
+      act.appendChild(ui.el('div', 'fin-title', '🎉 ¡' + esc(g ? g.nombre : nombre(f.ganador)) + ' gana el Ludo!'));
+      act.appendChild(ui.el('p', 'text-sm text-slate-400 text-center mb-2',
+        f.motivo === 'meta' ? 'Llegó primero a la META' : 'Iba más adelantado cuando se acabó el tiempo'));
       (f.clasificacion || []).forEach((c, k) => {
         const row = ui.el('div', 'fin-row', '');
-        row.appendChild(ui.el('span', 'text-lg', ['🥇', '🥈', '🥉', '🏅'][k] || '🏅'));
-        row.appendChild(App.avatars.badge(App.avatars.pick((+c.avatar || c.asiento) % 5), 22));
+        row.appendChild(ui.el('span', 'text-2xl', ['🥇', '🥈', '🥉', '🏅'][k] || '🏅'));
+        row.appendChild(App.avatars.badge(resolveAvatar(c, c.asiento), 24));
         row.appendChild(ui.el('div', 'flex-1', '<b>' + esc(c.nombre) + '</b><span class="text-xs text-slate-400"> ' +
-          (c.llego ? 'meta' : c.pos < 0 ? 'en la base' : 'casilla ' + c.pos) + '</span>'));
+          (c.llego ? '¡Llegó a la META!' : c.pos < 0 ? 'En base' : 'Casilla ' + (c.pos + 1) + '/56') + '</span>'));
         act.appendChild(row);
       });
       if (registro) act.appendChild(ui.el('p', 'text-sm text-center mt-2', 'Respondiste bien <b>' +
@@ -713,8 +796,7 @@ if (owner !== -1 && owner < state.players.length) {
     function pintar() {
       if (!vivo || !document.body.contains(frame)) { limpiar(); return; }
       colocar();
-      hd.innerHTML = 'Sala <b>' + esc(codigo) + '</b> · Ludo en red' +
-        (rol === 'docente' ? ' · vista del docente' : '');
+      hd.innerHTML = 'Sala <b>' + esc(codigo) + '</b> · Ludo Educativo' + (rol === 'docente' ? ' · Vista del docente' : '');
       tm.textContent = reloj();
       pintarJugadores();
       pintarLog();
@@ -723,10 +805,11 @@ if (owner !== -1 && owner < state.players.length) {
 
       act.innerHTML = '';
       if (!est) {
-        act.appendChild(ui.el('p', 'text-sm text-slate-400', 'Esperando el estado de la partida…'));
+        act.appendChild(ui.el('p', 'text-sm text-slate-400 text-center', 'Esperando el estado de la partida…'));
       } else if (est.fase === 'tirar') {
+        diceEl.textContent = '🎲';
         if (esMiTurno()) {
-          const b = ui.el('button', 'btn-primary w-full', '🎲 Tirar el dado');
+          const b = ui.el('button', 'btn-primary w-full mt-2', '🎲 Lanzar dado');
           b.addEventListener('click', () => {
             b.disabled = true;
             NET.accion({ tipo: 'tirar' }).then((r) => {
@@ -738,20 +821,20 @@ if (owner !== -1 && owner < state.players.length) {
           });
           act.appendChild(b);
         } else {
-          act.appendChild(ui.el('p', 'text-sm text-slate-400', 'Turno de ' + esc(nombre(est.espera.asiento)) + ': va a tirar el dado…'));
+          act.appendChild(ui.el('p', 'text-sm text-slate-400 text-center', '🎲 Turno de <b>' + esc(nombre(est.espera.asiento)) + '</b>: va a lanzar el dado…'));
         }
       } else if (est.fase === 'responder') {
-        if (est.dado) act.appendChild(ui.el('div', 'dice-box mb-2', '🎲 ' + est.dado));
-        if (est.pendiente && est.pendiente.tipo === 'reto') act.appendChild(ui.el('p', 'text-sm text-amber-300', '❓ Reto: acierta y avanzas 2 casillas más.'));
+        if (est.dado) diceEl.textContent = est.dado;
+        if (est.pendiente && est.pendiente.tipo === 'reto') act.appendChild(ui.el('p', 'text-sm text-amber-400 font-bold mb-2 text-center', '❓ Reto: acierta y avanzas 2 casillas más'));
         if (preg && preg.v === est.v) preguntar();
-        else act.appendChild(ui.el('p', 'text-sm text-slate-400', 'Cargando pregunta…'));
+        else act.appendChild(ui.el('p', 'text-sm text-slate-400 text-center', '⏳ <b>' + esc(nombre(est.espera.asiento)) + '</b> está respondiendo…'));
       }
 
       if (rol === 'docente') {
         const fila = ui.el('div', 'flex gap-2 mt-3', '');
-        const saltar = ui.el('button', 'btn-ghost text-xs', '⏭ Saltar turno');
+        const saltar = ui.el('button', 'btn-ghost text-xs flex-1', '⏭ Saltar turno');
         saltar.addEventListener('click', () => NET.saltar().then((r) => { if (!r.ok) ui.toast(r.mensaje || r.error, 'warn'); }));
-        const cerrar = ui.el('button', 'btn-ghost text-xs', '✕ Cerrar sala');
+        const cerrar = ui.el('button', 'btn-ghost text-xs flex-1', '✕ Cerrar sala');
         cerrar.addEventListener('click', () => {
           if (confirm('¿Cerrar la sala? Se acaba la partida para todos.')) NET.cerrar().then(() => App.go('inicio'));
         });
@@ -760,37 +843,40 @@ if (owner !== -1 && owner < state.players.length) {
       }
     }
 
-    /* ---------- eventos ---------- */
     const offs = [];
     function limpiar() {
       if (!vivo) return;
       vivo = false;
-      offs.forEach((fn) => { try { fn(); } catch (e) { /* noop */ } });
+      offs.forEach((fn) => { try { fn(); } catch (e) {} });
       clearInterval(tick);
     }
-    function alCerrar() {
-      limpiar();
-      ui.toast('El docente cerró la sala', 'warn');
-      App.go('inicio');
-    }
-    function alExpulsar() {
-      limpiar();
-      ui.toast('El docente te sacó de la sala', 'warn');
-      App.go('red');
-    }
+    function alCerrar() { limpiar(); ui.toast('El docente cerró la sala', 'warn'); App.go('inicio'); }
+    function alExpulsar() { limpiar(); ui.toast('El docente te sacó de la sala', 'warn'); App.go('red'); }
 
     offs.push(NET.on('estado', (p) => {
       if (!p) return;
+      const prev = est ? JSON.parse(JSON.stringify(est)) : null;
       est = p.estado || null;
       turnoVence = p.turnoVence || null;
       partidaVence = p.partidaVence || null;
       off = (p.ahora || Date.now()) - Date.now();
       registrar(p.eventos);
+
+      if (est && est.asientos) {
+        est.asientos.forEach((a, pi) => {
+          const oldP = (prev && prev.asientos && prev.asientos[pi]) ? prev.asientos[pi].pos : (visualPos[pi] !== undefined ? visualPos[pi] : a.pos);
+          if (typeof oldP === 'number' && typeof a.pos === 'number' && oldP !== a.pos) {
+            stepsAnimNet(pi, oldP, a.pos);
+          } else {
+            visualPos[pi] = a.pos;
+          }
+        });
+      }
       pintar();
     }));
     offs.push(NET.on('pregunta', (q) => { preg = q; pintar(); }));
     offs.push(NET.on('sala', () => pintar()));
-    offs.push(NET.on('fin', (f) => { fin = f; pintar(); }));
+    offs.push(NET.on('fin', (f) => { fin = f; ui.sound('win'); ui.confetti(root); pintar(); }));
     offs.push(NET.on('registro', (r) => { registro = r; pintar(); }));
     offs.push(NET.on('cerrada', alCerrar));
     offs.push(NET.on('expulsado', alExpulsar));

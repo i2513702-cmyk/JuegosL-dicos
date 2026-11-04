@@ -354,214 +354,321 @@ if (inScene) {
     const NET = App.net;
     const escFn = esc;
     if (!NET) {
-      if (config.container) config.container.appendChild(ui.el('p','text-sm text-slate-400','La partida en red no está disponible.'));
+      if (config.container) config.container.appendChild(ui.el('p', 'text-sm text-slate-400', 'La partida en red no está disponible.'));
       return;
     }
     const root = config.container;
-    root.innerHTML = '';
-    root.appendChild(ui.el('div', 'text-center text-xl font-extrabold text-slate-900 mb-2', '🗺️ Conquista de Territorios'));
+    const rol = config.rol || (NET.rol ? NET.rol() : 'alumno');
+    const codigo = config.codigo || (NET.codigo ? NET.codigo() : '');
+    const SH = ['▲', '◆', '●', '■'];
+    const COLORS = ['rojo', 'verde', 'azul', 'amarillo'];
 
     let est = NET.estado ? JSON.parse(JSON.stringify(NET.estado())) : null;
     let preg = NET.pregunta ? NET.pregunta() : null;
     let fin = NET.fin ? NET.fin() : null;
     let registro = NET.registro ? NET.registro() : null;
+    let venc = NET.vencimientos ? NET.vencimientos() : {};
+    let off = (venc && venc.off) ? venc.off : 0;
+    let turnoVence = venc ? venc.turno : null;
+    let partidaVence = venc ? venc.partida : null;
     let enviando = false;
     let vivo = true;
 
-    const rowsM0 = (est && est.rows) || (config.rows||8);
-    const colsM0 = (est && est.cols) || (config.cols||8);
-    const TOTAL0 = rowsM0*colsM0;
-    const MAJ0 = Math.floor(TOTAL0/2)+1;
-    root.appendChild(ui.el('div','text-center text-xs text-slate-500 mb-3','Meta: controlar <b>'+MAJ0+'</b> de '+TOTAL0+' zonas'));
+    const rowsM0 = (est && est.rows) || (config.rows || 8);
+    const colsM0 = (est && est.cols) || (config.cols || 8);
+    const TOTAL0 = rowsM0 * colsM0;
+    const MAJ0 = Math.floor(TOTAL0 / 2) + 1;
+
+    root.innerHTML = '';
+    root.appendChild(ui.el('div', 'text-center text-xl font-extrabold text-slate-900 mb-1', '🗺️ Conquista de Territorios'));
+    const hd = ui.el('div', 'text-center text-xs text-slate-400 mb-1', 'Sala <b>' + escFn(codigo) + '</b> · Meta: <b>' + MAJ0 + '</b> de ' + TOTAL0 + ' zonas');
+    const tm = ui.el('div', 'text-center text-xs font-bold text-amber-500 mb-2', '');
+    root.appendChild(hd);
+    root.appendChild(tm);
 
     const counters = ui.el('div', 'flex flex-wrap gap-2 justify-center mb-3', '');
     root.appendChild(counters);
+
     const SCENE = { W: 680, H: 380, BOARD_X: 40, BOARD_Y: 20, BOARD_W: 600, BOARD_H: 340 };
     const mapEl = ui.el('div', 'cq-map', '');
     const inScene = !!config.escenaCapa;
     if (inScene && config.escenaCapa) {
       config.escenaCapa.appendChild(mapEl);
     } else {
-      mapEl.style.position='relative';
-      mapEl.style.maxWidth='620px';
-      mapEl.style.margin='10px auto 0';
-      mapEl.style.display='grid';
-      mapEl.style.gap='6px';
-      mapEl.style.gridTemplateColumns='repeat('+colsM0+',1fr)';
+      mapEl.style.position = 'relative';
+      mapEl.style.maxWidth = '620px';
+      mapEl.style.margin = '10px auto 0';
+      mapEl.style.display = 'grid';
+      mapEl.style.gap = '6px';
+      mapEl.style.gridTemplateColumns = 'repeat(' + colsM0 + ', 1fr)';
       root.appendChild(mapEl);
     }
 
-    const hud = ui.el('div','flex flex-wrap items-center justify-between gap-2 mb-2','');
+    const hud = ui.el('div', 'flex flex-wrap items-center justify-between gap-2 mb-2', '');
     hud.innerHTML = '<div class="text-sm font-bold" id="cq-turn-n"></div>';
     root.appendChild(hud);
     const turnEl = hud.querySelector('#cq-turn-n');
-    const qArea = ui.el('div','mt-2','');
+    const qArea = ui.el('div', 'mt-2', '');
     root.appendChild(qArea);
+    const docControls = ui.el('div', 'mt-3', '');
+    root.appendChild(docControls);
 
-    function paintCountersNet(){
-      const lista = (est && est.asientos)?est.asientos:(NET.sala()?NET.sala().jugadores:[]);
-      const rowsM=(est&&est.rows)||rowsM0, colsM=(est&&est.cols)||colsM0, totalM=rowsM*colsM;
-      const turno=(est&&typeof est.turno==='number')?est.turno:0;
-      counters.innerHTML='';
-      if (App.gamekit && App.gamekit.renderChips){
-        try{ App.gamekit.renderChips(counters, lista, {activeIdx:turno, extra:(p)=> (p.zonas||0)+' zonas ('+Math.round((p.zonas||0)/totalM*100)+'%)'}); return; }catch(e){}
-      }
-      lista.forEach((p,i)=>{
-        const chip = ui.el('div','l-chip'+(turno===i?' l-chip-active':''),'');
-        chip.appendChild(ui.el('span','text-xs', escFn(p.nombre)+' '+(p.zonas||0)));
-        counters.appendChild(chip);
-      });
+    function resolveAvatar(p, i) {
+      if (p && typeof p.avatar === 'object' && p.avatar) return p.avatar;
+      return App.avatars.pick(((p && +p.avatar) || i) % 16);
     }
 
-    function paintMapNet(){
-      mapEl.innerHTML='';
-      const lista = (est && est.asientos)?est.asientos:(NET.sala()?NET.sala().jugadores:[]);
-      const mapa = (est && est.mapa)?est.mapa:[];
-      const rowsM=(est&&est.rows)||rowsM0, colsM=(est&&est.cols)||colsM0;
-      if(!inScene){ mapEl.style.gridTemplateColumns='repeat('+colsM+',1fr)'; }
-      for(let r=0;r<rowsM;r++){
-        for(let c=0;c<colsM;c++){
-          const idx=r*colsM+c;
+    function reloj() {
+      const now = Date.now() + off;
+      const p = [];
+      if (turnoVence) p.push('⏱ Turno: ' + Math.max(0, Math.ceil((turnoVence - now) / 1000)) + ' s');
+      if (partidaVence) {
+        const s = Math.max(0, Math.ceil((partidaVence - now) / 1000));
+        p.push('🏁 Partida: ' + Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'));
+      }
+      return p.join('   ·   ');
+    }
+
+    function renderDocenteControls() {
+      docControls.innerHTML = '';
+      if (rol !== 'docente') return;
+      const fila = ui.el('div', 'flex gap-2 mt-2', '');
+      const saltar = ui.el('button', 'btn-ghost text-xs flex-1', '⏭ Saltar turno');
+      saltar.addEventListener('click', () => NET.saltar().then((r) => { if (r && !r.ok && ui.toast) ui.toast(r.mensaje || r.error, 'warn'); }));
+      const cerrar = ui.el('button', 'btn-ghost text-xs flex-1', '✕ Cerrar sala');
+      cerrar.addEventListener('click', () => {
+        if (confirm('¿Cerrar la sala? Se acaba la partida para todos.')) NET.cerrar().then(() => App.go('inicio'));
+      });
+      fila.append(saltar, cerrar);
+      docControls.appendChild(fila);
+    }
+
+    function paintCountersNet() {
+      const lista = ((est && est.asientos) ? est.asientos : (NET.sala() ? NET.sala().jugadores : [])).map((p, i) => ({
+        ...p, color: p.color || COLORS[i % 4], avatar: resolveAvatar(p, i)
+      }));
+      const rowsM = (est && est.rows) || rowsM0, colsM = (est && est.cols) || colsM0, totalM = rowsM * colsM;
+      const turno = (est && typeof est.turno === 'number') ? est.turno : 0;
+      if (App.gamekit && App.gamekit.renderChips) {
+        App.gamekit.renderChips(counters, lista, {
+          activeIdx: turno,
+          extra: (p) => (p.zonas || 0) + ' zonas (' + Math.round((p.zonas || 0) / totalM * 100) + '%)'
+        });
+      }
+    }
+
+    function paintMapNet() {
+      mapEl.innerHTML = '';
+      const lista = (est && est.asientos) ? est.asientos : (NET.sala() ? NET.sala().jugadores : []);
+      const mapa = (est && est.mapa) ? est.mapa : [];
+      const rowsM = (est && est.rows) || rowsM0, colsM = (est && est.cols) || colsM0;
+      const targetIdx = (est && typeof est.objetivo === 'number') ? est.objetivo : ((est && typeof est.zonaAtacada === 'number') ? est.zonaAtacada : ((est && est.pendiente && typeof est.pendiente.zona === 'number') ? est.pendiente.zona : null));
+      if (!inScene) mapEl.style.gridTemplateColumns = 'repeat(' + colsM + ', 1fr)';
+
+      for (let r = 0; r < rowsM; r++) {
+        for (let c = 0; c < colsM; c++) {
+          const idx = r * colsM + c;
           const owner = mapa[idx];
-          const btn = ui.el('button','cq-zone'+(owner===null||owner===undefined?' cq-neutral':''),'');
-          if(inScene){
-            const cw=SCENE.BOARD_W/colsM, ch=SCENE.BOARD_H/rowsM;   /* el tablero del SVG mide 600x340 */
-            btn.style.left=(SCENE.BOARD_X+c*cw)/SCENE.W*100+'%';
-            btn.style.top=(SCENE.BOARD_Y+r*ch)/SCENE.H*100+'%';
-            btn.style.width=cw/SCENE.W*100+'%';
-            btn.style.height=ch/SCENE.H*100+'%';
-          }else{ btn.style.position='static'; btn.style.width='100%'; btn.style.height='100%'; }
-          if(owner===null||owner===undefined){ btn.appendChild(ui.el('span','cq-flag','🌫️')); }
-          else {
-            const pOwner = lista[owner];
-            if(pOwner && App.avatars){
-              const ch = pOwner.avatar || App.avatars.pick(owner);
-              const cnv=document.createElement('canvas'); cnv.width=cnv.height=26; cnv.className='avatar-canvas';
-              const g=cnv.getContext('2d'); if(g && App.avatars.drawIcon) App.avatars.drawIcon(g,5,5,1,ch,'right'); btn.appendChild(cnv);
-            }
-            const sStyle = ui.teamStyle ? ui.teamStyle((lista[owner]&&lista[owner].color)||'rojo') : {color:'#94a3b8'};
-            btn.style.background=(sStyle.color||'#94a3b8')+'38'; btn.style.boxShadow='inset 0 0 0 2px '+(sStyle.color||'#94a3b8');
-            if(lista[owner]) btn.title=lista[owner].nombre||'';
+          const btn = ui.el('button', 'cq-zone' + (owner === null || owner === undefined ? ' cq-neutral' : ''), '');
+          if (inScene) {
+            const cw = SCENE.BOARD_W / colsM, ch = SCENE.BOARD_H / rowsM;
+            btn.style.left = (SCENE.BOARD_X + c * cw) / SCENE.W * 100 + '%';
+            btn.style.top = (SCENE.BOARD_Y + r * ch) / SCENE.H * 100 + '%';
+            btn.style.width = cw / SCENE.W * 100 + '%';
+            btn.style.height = ch / SCENE.H * 100 + '%';
+          } else {
+            btn.style.position = 'static'; btn.style.width = '100%'; btn.style.height = '100%';
           }
+          if (owner === null || owner === undefined) {
+            btn.appendChild(ui.el('span', 'cq-flag', '🌫️'));
+          } else {
+            const pOwner = lista[owner];
+            if (pOwner && App.avatars) {
+              const ch = resolveAvatar(pOwner, owner);
+              const cnv = document.createElement('canvas'); cnv.width = cnv.height = 26; cnv.className = 'avatar-canvas';
+              const g = cnv.getContext('2d');
+              if (g && App.avatars.drawIcon) App.avatars.drawIcon(g, 5, 5, 1, ch, 'right');
+              btn.appendChild(cnv);
+            }
+            const colName = (pOwner && pOwner.color) || COLORS[owner % 4];
+            const sStyle = ui.teamStyle ? ui.teamStyle(colName) : { color: '#94a3b8' };
+            btn.style.background = (sStyle.color || '#94a3b8') + '38';
+            btn.style.boxShadow = 'inset 0 0 0 2px ' + (sStyle.color || '#94a3b8');
+            if (pOwner) btn.title = pOwner.nombre || '';
+          }
+          if (targetIdx === idx) btn.classList.add('cq-target');
           mapEl.appendChild(btn);
         }
       }
     }
 
-    function setTurnUINet(){
-      const lista = (est && est.asientos)?est.asientos:(NET.sala()?NET.sala().jugadores:[]);
-      const turno=(est&&typeof est.turno==='number')?est.turno:0;
-      const p = lista[turno]||lista[0]||{};
-      turnEl.innerHTML='';
-      if(App.avatars && App.avatars.badge) turnEl.appendChild(App.avatars.badge(p.avatar || (App.avatars.pick?App.avatars.pick(turno):null),24));
-      turnEl.appendChild(document.createTextNode(' Turno: '));
-      turnEl.appendChild(ui.el('b','', escFn(p.nombre)));
+    function setTurnUINet() {
+      const lista = (est && est.asientos) ? est.asientos : (NET.sala() ? NET.sala().jugadores : []);
+      const turno = (est && typeof est.turno === 'number') ? est.turno : 0;
+      const p = lista[turno] || lista[0] || {};
+      turnEl.innerHTML = '';
+      if (App.avatars && App.avatars.badge) turnEl.appendChild(App.avatars.badge(resolveAvatar(p, turno), 26));
+      turnEl.appendChild(document.createTextNode(' Turno de '));
+      turnEl.appendChild(ui.el('b', '', escFn(p.nombre)));
+      turnEl.appendChild(document.createTextNode(est && est.fase === 'elegir' ? ' · elige una zona' : ' · en combate'));
       paintCountersNet();
       paintMapNet();
     }
 
-    function mostrarPregunta(){
-      qArea.innerHTML='';
-      if(!preg || !preg.enunciado){ qArea.appendChild(ui.el('p','text-sm text-slate-400','Cargando pregunta…')); return; }
-      const card = ui.el('div','q-card','');
-      const tipo = preg.tipo || (est && est.pendiente && est.pendiente.tipo) || 'turno';
-      card.appendChild(ui.el('div','text-xs text-slate-400 mb-1', tipo==='defensa'?'🛡️ Defensa':'⚔️ Ataque'));
-      card.appendChild(ui.el('h3','q-text text-slate-900',escFn(preg.enunciado)));
-      const list = ui.el('div','grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4','');
-      const yo = () => (config.rol==='docente'?null:(NET.yo?NET.yo():null));
-      const esMiTurno = () => est && est.espera && est.espera.asiento === yo();
-      const puedo = esMiTurno();
-      (preg.opciones||[]).forEach((op,i)=>{
-        const b = ui.el('button','opt-btn s'+i,'<span class="opt-label">'+escFn(op)+'</span>');
-        if(!puedo) b.disabled=true;
-        b.addEventListener('click',()=>{
-          if(enviando) return; enviando=true; list.querySelectorAll('.opt-btn').forEach((x)=>{x.disabled=true;});
-          NET.accion({tipo:'responder', eleccion:i}).then((r)=>{ enviando=false; if(!r||!r.ok){ if(ui.toast) ui.toast((r&&(r.mensaje||r.error))||'No se pudo responder','error'); pintarNet(); }});
+    function mostrarPregunta() {
+      qArea.innerHTML = '';
+      if (!preg || !preg.enunciado) { qArea.appendChild(ui.el('p', 'text-sm text-slate-400 text-center', 'Cargando pregunta…')); return; }
+      const card = ui.el('div', 'q-card', '');
+      const tipo = preg.tipo || (est && est.pendiente && est.pendiente.tipo) || (est && est.fase === 'defendiendo' ? 'defensa' : 'turno');
+      card.appendChild(ui.el('div', 'text-xs text-slate-400 mb-1', (tipo === 'defensa' ? '🛡️ Defensa de territorio' : '⚔️ Ataque a territorio') + (preg.categoria ? ' · ' + escFn(preg.categoria) : '')));
+      card.appendChild(ui.el('h3', 'q-text text-slate-900', escFn(preg.enunciado)));
+      const list = ui.el('div', 'grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4', '');
+      const yo = () => (rol === 'docente' ? null : (NET.yo ? NET.yo() : null));
+      const puedo = est && est.espera && est.espera.asiento === yo();
+      (preg.opciones || []).forEach((op, i) => {
+        const b = ui.el('button', 'opt-btn s' + i, '<span class="opt-key">' + SH[i % 4] + '</span><span class="opt-label">' + escFn(op) + '</span>');
+        if (!puedo) b.disabled = true;
+        b.addEventListener('click', () => {
+          if (enviando) return;
+          enviando = true;
+          list.querySelectorAll('.opt-btn').forEach((x) => { x.disabled = true; });
+          NET.accion({ tipo: 'responder', eleccion: i }).then((r) => {
+            enviando = false;
+            if (!r || !r.ok) { if (ui.toast) ui.toast((r && (r.mensaje || r.error)) || 'No se pudo responder', 'error'); pintarNet(); }
+          });
         });
         list.appendChild(b);
       });
       card.appendChild(list);
       qArea.appendChild(card);
-      if(!puedo && est && est.espera){ const lista=(est&&est.asientos)?est.asientos:[]; const nom=lista[est.espera.asiento]?lista[est.espera.asiento].nombre:''; qArea.appendChild(ui.el('p','text-xs text-slate-400 mt-2', tipo==='defensa' ? ('Esperando defensa de '+escFn(nom)+'…') : (escFn(nom)+' está respondiendo…'))); }
-    }
-
-    function pintarPodioNet(){
-      qArea.innerHTML='';
-      const lista=(est&&est.asientos)?est.asientos:(NET.sala()?NET.sala().jugadores:[]);
-      const sorted = lista.slice().sort((a,b)=>(b.zonas||0)-(a.zonas||0));
-      sorted.slice(0,4).forEach((p,i)=>{
-        const row = ui.el('div','fin-row','');
-        row.appendChild(ui.el('span','text-lg',['🥇','🥈','🥉','🏅'][i]||'🏅'));
-        row.appendChild(ui.el('div','flex-1','<b>'+escFn(p.nombre)+'</b><span class="text-xs text-slate-400"> '+(p.zonas||0)+' zonas</span>'));
-        qArea.appendChild(row);
-      });
-      if(registro){ qArea.appendChild(ui.el('p','text-sm text-center mt-2','Respondiste bien <b>'+((registro.respuestas||[]).filter((r)=>r.correcto).length)+'</b> de <b>'+((registro.respuestas||[]).length)+'</b> preguntas.')); }
-      const volver = ui.el('button','btn-primary w-full mt-3','Volver al inicio');
-      volver.addEventListener('click',()=>{ limpiarNet(); const rolc=config.rol||(NET.rol?NET.rol():'alumno'); App.go(rolc==='docente'?'inicio':'red'); });
-      qArea.appendChild(volver);
-      if((config.rol||(NET.rol?NET.rol():''))==='docente'){ const saltar = ui.el('button','btn-ghost w-full mt-2','⏭ Saltar turno'); saltar.addEventListener('click',()=>NET.saltar().then((r)=>{ if(r&&!r.ok && ui.toast) ui.toast(r.mensaje||r.error,'warn'); })); const cerr=ui.el('button','btn-ghost w-full mt-2','✕ Cerrar sala'); cerr.addEventListener('click',()=>{ if(confirm('¿Cerrar la sala?')) NET.cerrar().then(()=>App.go('inicio')); }); qArea.appendChild(saltar); qArea.appendChild(cerr); }
-    }
-
-    function pintarNet(){
-      if(!vivo||!document.body.contains(root)){ limpiarNet(); return; }
-      paintMapNet(); paintCountersNet(); setTurnUINet();
-      const finNow = fin || (est && est.fase==='terminada');
-      if(finNow){ qArea.innerHTML=''; pintarPodioNet(); return; }
-      qArea.innerHTML='';
-      if(!est){ qArea.appendChild(ui.el('p','text-sm text-slate-400','Esperando el estado de la partida…')); return; }
-      const yo = () => (config.rol==='docente'?null:(NET.yo?NET.yo():null));
-      const esMiTurno = () => est && est.espera && est.espera.asiento === yo();
-      if(est.fase==='elegir'){
-        if(config.rol==='docente'){ qArea.appendChild(ui.el('p','text-sm text-slate-400','Vista del docente')); return; }
-        if(esMiTurno()){ qArea.appendChild(ui.el('p','text-sm mb-2','Elige una zona adyacente a las tuyas o neutral para atacar')); qArea.appendChild(ui.el('p','text-xs text-slate-400','Selecciona una zona en el mapa')); }
-        else { const lista=(est&&est.asientos)?est.asientos:[]; const nom=est.espera&&lista[est.espera.asiento]?lista[est.espera.asiento].nombre:''; qArea.appendChild(ui.el('p','text-sm text-slate-400',escFn(nom)+' está eligiendo zona…')); }
-      }else if(est.fase==='responder' || est.fase==='defensa'){
-        if(config.rol==='docente'){ qArea.appendChild(ui.el('p','text-sm text-slate-400','Vista del docente')); return; }
-        if(preg && preg.v === est.v){ mostrarPregunta(); }
-        else { qArea.appendChild(ui.el('p','text-sm text-slate-400','Cargando pregunta…')); }
-      }else if(est.fase==='defendiendo'){
-        if(config.rol==='docente'){ qArea.appendChild(ui.el('p','text-sm text-slate-400','Vista del docente')); return; }
-        if(preg && preg.v === est.v){ mostrarPregunta(); }
-        else {
-          const lista=(est&&est.asientos)?est.asientos:[]; const nom=est.espera&&lista[est.espera.asiento]?lista[est.espera.asiento].nombre:'';
-          qArea.appendChild(ui.el('p','text-sm text-slate-400','Esperando defensa de '+escFn(nom)+'…'));
-        }
+      if (!puedo && est && est.espera) {
+        const lista = (est && est.asientos) ? est.asientos : [];
+        const nom = lista[est.espera.asiento] ? lista[est.espera.asiento].nombre : '';
+        qArea.appendChild(ui.el('p', 'text-xs text-slate-400 mt-2 text-center', tipo === 'defensa' ? ('🛡️ Esperando la defensa de <b>' + escFn(nom) + '</b>…') : ('⚔️ <b>' + escFn(nom) + '</b> está respondiendo…')));
       }
     }
 
-    mapEl.addEventListener('click',(e)=>{
-      if(config.rol==='docente') return;
+    function pintarPodioNet() {
+      qArea.innerHTML = '';
+      const lista = (est && est.asientos) ? est.asientos : (NET.sala() ? NET.sala().jugadores : []);
+      const sorted = lista.slice().sort((a, b) => (b.zonas || 0) - (a.zonas || 0));
+      const win = sorted[0] || { nombre: 'Ganador', zonas: 0 };
+      const podWrap = ui.el('div', '', '');
+      qArea.appendChild(podWrap);
+      if (App.gamekit && App.gamekit.podium) {
+        App.gamekit.podium(podWrap, sorted.map((s, i) => ({
+          nombre: s.nombre, icono: '🗺️', rank: i + 1, subtitulo: (s.zonas || 0) + ' zonas',
+          campo1Label: 'Zonas', campo1: s.zonas || 0, campo2Label: 'Meta ', campo2: MAJ0
+        })), { title: '🏆 ¡' + win.nombre + ' conquistó el mapa!', subtitle: win.nombre + ' controla ' + (win.zonas || 0) + ' de ' + TOTAL0 + ' zonas' });
+      }
+      if (registro) {
+        qArea.appendChild(ui.el('p', 'text-sm text-center mt-2', 'Respondiste bien <b>' + ((registro.respuestas || []).filter((r) => r.correcto).length) + '</b> de <b>' + ((registro.respuestas || []).length) + '</b> preguntas.'));
+      }
+    }
+
+    function pintarNet() {
+      if (!vivo || !document.body.contains(root)) { limpiarNet(); return; }
+      tm.textContent = reloj();
+      setTurnUINet();
+      renderDocenteControls();
+
+      const finNow = fin || (est && est.fase === 'terminada');
+      if (finNow) { pintarPodioNet(); return; }
+      qArea.innerHTML = '';
+      if (!est) { qArea.appendChild(ui.el('p', 'text-sm text-slate-400 text-center', 'Esperando el estado de la partida…')); return; }
+
+      const yo = () => (rol === 'docente' ? null : (NET.yo ? NET.yo() : null));
+      const esMiTurno = () => est && est.espera && est.espera.asiento === yo();
+      const lista = (est && est.asientos) ? est.asientos : [];
+      const nomEsp = (est.espera && lista[est.espera.asiento]) ? lista[est.espera.asiento].nombre : '';
+
+      if (est.fase === 'elegir') {
+        if (esMiTurno()) {
+          qArea.appendChild(ui.el('div', 'q-card text-center', '<b>🎯 Tu turno:</b> Haz clic en una parcela neutral o rival adyacente a tus zonas en el mapa para atacarla.'));
+        } else {
+          qArea.appendChild(ui.el('p', 'text-sm text-slate-400 text-center', '🗺️ <b>' + escFn(nomEsp) + '</b> está eligiendo una zona en el mapa…'));
+        }
+      } else if (est.fase === 'responder' || est.fase === 'defensa' || est.fase === 'defendiendo') {
+        if (preg && preg.v === est.v) mostrarPregunta();
+        else qArea.appendChild(ui.el('p', 'text-sm text-slate-400 text-center', '⏳ Esperando respuesta de <b>' + escFn(nomEsp) + '</b>…'));
+      }
+    }
+
+    mapEl.addEventListener('click', (e) => {
+      if (rol === 'docente') return;
       const btn = e.target.closest('.cq-zone');
-      if(!btn) return;
-      if(!est || est.fase!=='elegir') return;
-      const yo = () => (NET.yo?NET.yo():null);
-      if(est.espera && est.espera.asiento !== yo()) return;
-      const rowsM=(est&&est.rows)||rowsM0, colsM=(est&&est.cols)||colsM0;
+      if (!btn || !est || est.fase !== 'elegir') return;
+      const yo = () => (NET.yo ? NET.yo() : null);
+      if (est.espera && est.espera.asiento !== yo()) {
+        ui.toast('No es tu turno', 'warn');
+        return;
+      }
       const nodes = Array.from(mapEl.querySelectorAll('.cq-zone'));
       const idx = nodes.indexOf(btn);
-      if(idx<0) return;
-      if(enviando) return;
-      enviando=true;
-      NET.accion({tipo:'elegir', zona:idx}).then((r)=>{ enviando=false; if(!r||!r.ok){ if(ui.toast) ui.toast((r&&(r.mensaje||r.error))||'No se puede elegir esa zona','warn'); }});
+      if (idx < 0 || enviando) return;
+      enviando = true;
+      btn.classList.add('cq-target');
+      NET.accion({ tipo: 'elegir', zona: idx }).then((r) => {
+        enviando = false;
+        if (!r || !r.ok) {
+          btn.classList.remove('cq-target');
+          if (ui.toast) ui.toast((r && (r.mensaje || r.error)) || 'Debes elegir una zona adyacente a las tuyas', 'warn');
+        }
+      });
     });
 
-    const offs=[]; let tickNet=null;
-    function limpiarNet(){ if(!vivo)return; vivo=false; offs.forEach((fn)=>{try{fn();}catch(e){}}); if(tickNet) clearInterval(tickNet); }
-    function alCerrarNet(){ limpiarNet(); if(ui.toast)ui.toast('El docente cerró la sala','warn'); App.go((config.rol||(NET.rol?NET.rol():''))==='docente'?'inicio':'red'); }
-    function alExpulsarNet(){ limpiarNet(); if(ui.toast)ui.toast('El docente te sacó de la sala','warn'); App.go('red'); }
+    const offs = [];
+    const tickNet = setInterval(() => {
+      if (!vivo || !document.body.contains(root)) { limpiarNet(); return; }
+      tm.textContent = reloj();
+    }, 250);
 
-    offs.push(NET.on('estado',(p)=>{ if(!p)return; est = p.estado ? JSON.parse(JSON.stringify(p.estado)) : est; pintarNet(); }));
-    offs.push(NET.on('pregunta',(q)=>{ preg=q; enviando=false; pintarNet(); }));
-    offs.push(NET.on('sala',()=>pintarNet()));
-    offs.push(NET.on('fin',(f)=>{fin=f;pintarNet();}));
-    offs.push(NET.on('registro',(r)=>{registro=r;pintarNet();}));
-    try{offs.push(NET.on('cerrada',alCerrarNet));}catch(e){}
-    try{offs.push(NET.on('expulsado',alExpulsarNet));}catch(e){}
+    function limpiarNet() {
+      if (!vivo) return;
+      vivo = false;
+      clearInterval(tickNet);
+      offs.forEach((fn) => { try { fn(); } catch (e) {} });
+    }
+    function alCerrarNet() { limpiarNet(); if (ui.toast) ui.toast('El docente cerró la sala', 'warn'); App.go(rol === 'docente' ? 'inicio' : 'red'); }
+    function alExpulsarNet() { limpiarNet(); if (ui.toast) ui.toast('El docente te sacó de la sala', 'warn'); App.go('red'); }
 
-    tickNet = setInterval(()=>{ if(!vivo||!document.body.contains(root)){limpiarNet();return;} }, 250);
+    offs.push(NET.on('estado', (p) => {
+      if (!p) return;
+      const prevMapa = (est && est.mapa) ? est.mapa.slice() : null;
+      est = p.estado ? JSON.parse(JSON.stringify(p.estado)) : est;
+      turnoVence = p.turnoVence || null;
+      partidaVence = p.partidaVence || null;
+      off = (p.ahora || Date.now()) - Date.now();
+      const lista = (est && est.asientos) ? est.asientos : [];
+
+      (p.eventos || []).forEach((ev) => {
+        if (ev.t === 'respondida' && ev.asiento === (NET.yo ? NET.yo() : -1)) {
+          ui.sound(ev.correcto ? 'correct' : 'wrong');
+        }
+      });
+
+      if (prevMapa && est && est.mapa) {
+        for (let i = 0; i < est.mapa.length; i++) {
+          if (prevMapa[i] !== est.mapa[i] && est.mapa[i] != null) {
+            const conqueror = lista[est.mapa[i]];
+            ui.sound('correct');
+            ui.confetti(mapEl);
+            if (conqueror) ui.toast('🏴 ' + conqueror.nombre + ' conquistó un territorio', 'success');
+            break;
+          }
+        }
+      }
+      pintarNet();
+    }));
+    offs.push(NET.on('pregunta', (q) => { preg = q; enviando = false; pintarNet(); }));
+    offs.push(NET.on('sala', () => pintarNet()));
+    offs.push(NET.on('fin', (f) => { fin = f; ui.sound('win'); ui.confetti(root); pintarNet(); }));
+    offs.push(NET.on('registro', (r) => { registro = r; pintarNet(); }));
+    try { offs.push(NET.on('cerrada', alCerrarNet)); } catch (e) {}
+    try { offs.push(NET.on('expulsado', alExpulsarNet)); } catch (e) {}
+
     pintarNet();
   }
-
 
   return { init, initNet, MODE };
 })(App.ui);
