@@ -7,11 +7,13 @@
     "api": "node api/server.js",
     "seed": "node scripts/seed_db.js",
     "start": "node servidor-live.js",
-    "test": "node tests/audit_full.js && node tests/movimiento.js && node tests/verify_protos.js && node tests/encoding_check.js && node tests/cross-browser-test.js",
+    "test": "node tests/ludo_rules.test.js && node tests/preguntas.test.js && node tests/partidas_socket.test.js",
     "test:movimiento": "node tests/movimiento.js",
     "test:ludo": "node tests/ludo_rules.test.js && node tests/preguntas.test.js",
     "test:partidas": "node tests/partidas_socket.test.js",
-    "live": "node servidor-live.js"
+    "live": "node servidor-live.js",
+    "test:navegador": "node tests/audit_full.js && node tests/movimiento.js && node tests/verify_protos.js && node tests/encoding_check.js && node tests/cross-browser-test.js",
+    "local": "node servidor.js"
   },
   "dependencies": {
     "argon2": "^0.45.2",
