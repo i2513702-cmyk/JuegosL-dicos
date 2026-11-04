@@ -67,7 +67,7 @@ const server = http.createServer((req, res) => {
   let p; try { p = decodeURIComponent((req.url || '/').split('?')[0]); } catch (e) { res.writeHead(400); return res.end('bad request'); }
   if (p === '/health') { res.writeHead(200); return res.end('ok'); }
   if (p === '/api/sync') return handleSync(req, res);
-  if (p === '/') p = '/live.html';
+  if (p === '/') p = '/index.html';
   const fp = path.normalize(path.join(ROOT, p));
   if (!fp.startsWith(ROOT) || BLOCK.test(p.slice(1))) { res.writeHead(403); return res.end('forbidden'); }
   fs.stat(fp, (e, st) => {
