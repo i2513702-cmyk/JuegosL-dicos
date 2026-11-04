@@ -75,10 +75,10 @@ App.roam = (function () {
     if (!nav) return;
     const user = App.auth.who();
     const links = user && user.rol === 'docente'
-      ? [['inicio', '🎮 Sala de juego'], ['docente', '👩‍🏫 Panel docente']]
+      ? [['inicio', '🎮 Sala de juego'], ['red', '🌐 Ludo en red'], ['docente', '👩‍🏫 Panel docente']]
       : user
-        ? [['inicio', '🎮 Jugar'], ['estudiante', '🎒 Mi progreso']]
-        : [];
+        ? [['inicio', '🎮 Jugar'], ['red', '🌐 Ludo en red'], ['estudiante', '🎒 Mi progreso']]
+        : [['red', '🌐 Ludo en red']];
     nav.innerHTML = '';
     links.forEach(([key, label]) => {
       const b = ui.el('button', 'nav-btn' + (current === key ? ' nav-btn-active' : ''), label);
@@ -669,6 +669,11 @@ function route() {
   App.roam.renderUserBar();
   const user = App.auth.who();
   const hash = (location.hash || '#/inicio').replace('#/', '');
+  if (hash === 'red' || hash.indexOf('red/') === 0) {
+    App.roam.navBtn('red');
+    if (App.red) App.red.mount(app, (hash.split('/')[1] || '').toUpperCase().replace(/[^A-Z]/g, '').slice(0, 4));
+    return;
+  }
   if (!user) { App.roam.sectionLogin(app); return; }
   if (user.rol === 'docente') {
     if (hash === 'docente') App.roam.sectionDocente(app);
