@@ -78,7 +78,7 @@ const server = http.createServer((req, res) => {
 });
 const io = new Server(server, { cors: { origin: '*' }, pingInterval: 10000, pingTimeout: 20000, maxHttpBufferSize: 3e6, perMessageDeflate: { threshold: 1024 } });
 /* partidas en red: el servidor lleva el estado del juego (Ludo) */
-require('./servidor/partidas').attach(io, { HOST_KEY });
+const partidasNet = require('./servidor/partidas').attach(io, { HOST_KEY });
 
 const rooms = new Map();
 const rid = () => Math.random().toString(36).slice(2, 10);
@@ -258,6 +258,64 @@ io.on('connection', (s) => {
     if (t && t.sid === s.id) { t.online = false; io.to(w.hostSid).emit('watch:stream', sInfo(t)); }
   });
 });
+/* =====================================================================
+ * ADMINISTRAR SALAS (docente con HOST_KEY): listar y cerrar cualquier sala abierta
+ *  admin:salas · admin:cerrar {tipo, codigo} · admin:cerrar-todas {tipo?}
+ *  tipos: partida (4 letras) · quiz (PIN de 6 cifras) · observacion (5 letras)
+ * Exige HOST_KEY definida en el servidor: sin clave no hay administrador.
+ * (Las salas del modo anterior viven en los navegadores y se cierran desde allí.) */
+const adminCrypto = require('node:crypto');
+const adminHash = (v) => adminCrypto.createHash('sha256').update(String(v)).digest();
+const adminKeyOk = (k) => !!HOST_KEY && typeof k === 'string' && adminCrypto.timingSafeEqual(adminHash(k), adminHash(HOST_KEY));
+const ADMIN_TIPOS = ['partida', 'quiz', 'observacion'];
+
+function adminLista() {
+  const out = [];
+  partidasNet.lista().forEach((x) => out.push({ tipo: 'partida', codigo: x.codigo, juego: x.juego, estado: x.fase, jugadores: x.jugadores, enLinea: x.enLinea, creada: x.creada }));
+  rooms.forEach((r) => out.push({ tipo: 'quiz', codigo: r.pin, juego: '', estado: r.state, jugadores: r.players.size, enLinea: [...r.players.values()].filter((p) => p.online).length, creada: r.created }));
+  watches.forEach((w) => out.push({ tipo: 'observacion', codigo: w.code, juego: '', estado: '', jugadores: w.streams.size, enLinea: [...w.streams.values()].filter((t) => t.online).length, creada: w.created }));
+  return out.sort((a, b) => b.creada - a.creada);
+}
+function adminCerrarUna(tipo, codigo) {
+  codigo = String(codigo || '').trim().toUpperCase();
+  if (tipo === 'partida') return partidasNet.cerrar(codigo);
+  if (tipo === 'quiz') {
+    const r = rooms.get(codigo); if (!r) return false;
+    clearTimeout(r.timer); io.to(r.pin).emit('closed'); io.in(r.pin).socketsLeave(r.pin); rooms.delete(r.pin); return true;
+  }
+  if (tipo === 'observacion') {
+    const w = watches.get(codigo); if (!w) return false;
+    io.to('sh:' + w.code).emit('watch:closed'); io.to('w:' + w.code).emit('watch:closed');
+    io.in('sh:' + w.code).socketsLeave('sh:' + w.code); io.in('w:' + w.code).socketsLeave('w:' + w.code);
+    w.streams.forEach((t) => clearTimeout(t.flush)); watches.delete(w.code); return true;
+  }
+  return false;
+}
+
+io.on('connection', (s) => {
+  const fallos = [];
+  /* true solo si la clave es válida; si no, ya respondió el error */
+  const adminOk = (d, cb) => {
+    const t = Date.now(); while (fallos.length && t - fallos[0] > 60000) fallos.shift();
+    if (fallos.length >= 5) { reply(cb, { ok: false, error: 'DEMASIADOS_INTENTOS', mensaje: 'Demasiados intentos. Espera un minuto.' }); return false; }
+    if (!HOST_KEY) { reply(cb, { ok: false, error: 'SIN_CLAVE', mensaje: 'El servidor no tiene HOST_KEY: administrar salas está desactivado.' }); return false; }
+    if (!adminKeyOk(d && d.key)) { fallos.push(t); reply(cb, { ok: false, error: 'CLAVE_INCORRECTA', mensaje: 'Clave de docente incorrecta' }); return false; }
+    return true;
+  };
+  s.on('admin:salas', (d, cb) => { if (adminOk(d, cb)) reply(cb, { ok: true, salas: adminLista() }); });
+  s.on('admin:cerrar', (d, cb) => {
+    if (!adminOk(d, cb)) return;
+    reply(cb, adminCerrarUna(d.tipo, d.codigo) ? { ok: true } : { ok: false, error: 'SALA_NO_EXISTE', mensaje: 'Esa sala ya no existe' });
+  });
+  s.on('admin:cerrar-todas', (d, cb) => {
+    if (!adminOk(d, cb)) return;
+    const solo = d && ADMIN_TIPOS.indexOf(d.tipo) >= 0 ? d.tipo : null;
+    let n = 0;
+    adminLista().forEach((x) => { if ((!solo || x.tipo === solo) && adminCerrarUna(x.tipo, x.codigo)) n++; });
+    reply(cb, { ok: true, cerradas: n });
+  });
+});
+
 setInterval(() => { const now = Date.now(); watches.forEach((w, k) => { if (now - w.created > 8 * 3600e3) watches.delete(k); }); }, 600e3);
 
 setInterval(() => { const now = Date.now(); rooms.forEach((r, k) => { if (now - r.created > 4 * 3600e3) rooms.delete(k); }); }, 600e3);

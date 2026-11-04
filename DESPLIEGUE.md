@@ -24,7 +24,12 @@ Railway: Settings → Networking → *Generate Domain*. Usa **una sola réplica*
 - **Salas con código de sala (modo anterior):** ahora también sincronizan en línea (`/api/sync`).
   Ojo: ese modo sigue ejecutando el juego en el dispositivo del docente.
 
-## 4. Notas
+## 4. Cerrar salas (administrador)
+- **Panel docente → 🚪 Salas**, o **Ludo en red → 🚪 Ver y cerrar salas**: lista las salas abiertas (partidas en red, quizzes en vivo, observación) y permite cerrar una o todas.
+- Pide la clave del docente (`HOST_KEY`). Si el servidor no tiene `HOST_KEY`, esta opción queda desactivada.
+- No usa base de datos: las salas viven en la memoria del servidor.
+
+## 5. Notas
 - Plan gratis de Render: se duerme tras ~15 min sin uso; abre la URL 1 o 2 minutos antes de la clase.
 - No hagas `push` a `main` en plena clase: el servidor se reinicia y se pierden las sesiones activas.
 - Local: `npm install && npm run live` → http://localhost:8787 (otros dispositivos en la misma WiFi: http://IP-de-tu-PC:8787).

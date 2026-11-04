@@ -433,6 +433,13 @@ function attach(io, opts) {
   return {
     salas: salas,
     stats: () => ({ salas: salas.size, jugadores: [...salas.values()].reduce((n, r) => n + r.jugadores.size, 0) }),
+    /* administración: ver y cerrar salas de cualquier docente (la autorización la hace quien llame) */
+    lista: () => [...salas.values()].map((r) => ({
+      codigo: r.codigo, juego: r.juego, fase: r.fase, creada: r.creada, ultima: r.ultima,
+      jugadores: r.jugadores.size, enLinea: [...r.jugadores.values()].filter((p) => p.online).length
+    })),
+    cerrar: (codigo) => { const r = salas.get(String(codigo || '').trim().toUpperCase()); if (!r) return false; cerrarSala(r); return true; },
+    cerrarSalas: () => { const todas = [...salas.values()]; todas.forEach((r) => cerrarSala(r)); return todas.length; },
     cerrarTodas: () => { clearInterval(barrido); [...salas.values()].forEach((r) => cerrarSala(r, false)); }
   };
 }

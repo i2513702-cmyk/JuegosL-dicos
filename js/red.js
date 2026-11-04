@@ -137,6 +137,14 @@ App.red = (function () {
       });
       c.appendChild(btn);
       raiz.appendChild(c);
+
+      const adm = tarjeta('🛠️ Administrar salas abiertas');
+      adm.appendChild(ui.el('p', 'text-sm text-slate-400 mb-3',
+        'Mira las salas que hay en el servidor y ciérralas (una o todas), también las que quedaron abiertas de otras sesiones.'));
+      const btnAdm = ui.el('button', 'btn-ghost', '🚪 Ver y cerrar salas');
+      btnAdm.addEventListener('click', () => { if (App.salasAdmin) App.salasAdmin.abrirModal(); else toast('No se cargó salasAdmin.js', 'error'); });
+      adm.appendChild(btnAdm);
+      raiz.appendChild(adm);
     }
 
     /* ---- alumno (o cualquiera): unirse ---- */

@@ -62,6 +62,7 @@
       ['dificultades', '🎯 Dificultades'],
       ['estudiantes', '🧑‍🎓 Estudiantes'],
       ['reportes', '📈 Reportes'],
+      ['salas', '🚪 Salas'],
       ['datos', '💾 Datos']
     ];
     tabs.forEach(([k, label]) => {
@@ -76,7 +77,12 @@
   }
 
   /* ---------------------------- secciones ---------------------------- */
-  const sections = { preguntas, cursos, categorias, dificultades, estudiantes, reportes, datos };
+  function salas(body) {
+    if (App.salasAdmin) App.salasAdmin.render(body);
+    else body.appendChild(card('Salas', ui.el('p', 'text-sm', 'No se cargó el módulo salasAdmin.js.')));
+  }
+
+  const sections = { preguntas, cursos, categorias, dificultades, estudiantes, reportes, datos, salas };
 
   function selectCurso(value, change) {
     const s = document.createElement('select');
