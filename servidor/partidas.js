@@ -86,11 +86,22 @@ function attach(io, opts) {
    * En Batalla (equipos) va a todo el equipo en turno; solo el vocero puede actuar. */
   function emitPregunta(r, soloSid) {
     const e = r.estado;
-    if (r.fase !== 'jugando' || !e || !e.pendiente || !e.espera) return;
+    if (r.fase !== 'jugando' || !e || !e.espera) return;
+    if (!e.pendiente) {
+      // intentar inicializar para juegos que lo necesiten
+      if (r.juego === 'batalla' && (e.fase === 'preguntar' || e.fase === 'responder') && e.espera && e.espera.asiento != null) {
+        try {
+          if (r.mazo && typeof r.mazo.sacar === 'function') {
+            e.pendiente = { qid: r.mazo.sacar().id, tipo: 'turno' };
+          }
+        } catch (ex) {}
+      }
+    }
+    if (!e.pendiente) return;
     const asientoEsp = e.espera.asiento;
     const p = jugadorEn(r, asientoEsp);
     const msg = Object.assign(
-      { v: e.v, tipo: e.pendiente.tipo, asiento: asientoEsp, vence: r.turnoVence || null, ahora: Date.now() },
+      { v: e.v, tipo: e.pendiente.tipo || 'turno', asiento: asientoEsp, vence: r.turnoVence || null, ahora: Date.now() },
       r.mazo.publica(e.pendiente.qid)
     );
     if (soloSid) {
@@ -219,15 +230,13 @@ function attach(io, opts) {
       if (a.rows !== undefined) { const v = Math.max(4, Math.min(12, +a.rows | 0)); ajustes.rows = v; }
       if (a.cols !== undefined) { const v = Math.max(4, Math.min(12, +a.cols | 0)); ajustes.cols = v; }
       if (a.hpTotal !== undefined) { const v = Math.max(50, Math.min(500, +a.hpTotal | 0)); ajustes.hpTotal = v; }
-      if (a.timeSeconds !== undefined && tiempoSeg === 0) {
-        // ya manejado arriba si viene por separado
-      }
       const codigo = nuevoCodigo(), token = crypto.randomBytes(12).toString('hex');
       const modulo = JUEGOS[d.juego];
       const r = {
         codigo: codigo, juego: d.juego, modulo: modulo, token: token, hostSid: s.id,
         fase: 'sala', estado: null, fin: null,
         mazo: Preguntas.crearMazo(banco.preguntas, { rng: rng, mezclarOpciones: a.mezclarOpciones !== false }),
+        bancoPreguntas: banco.preguntas,
         ajustes: ajustes,
         turnoSeg: turnoSeg, tiempoSeg: tiempoSeg, turnoVence: null, partidaVence: null,
         jugadores: new Map(), orden: [], registro: [],
@@ -238,6 +247,44 @@ function attach(io, opts) {
       s.data.hostCodigo = codigo;
       ack(cb, { ok: true, codigo: codigo, token: token, juego: d.juego, min: modulo.min, max: modulo.max,
         aceptadas: banco.preguntas.length, descartadas: banco.descartadas, turnoSeg: turnoSeg, tiempoSeg: tiempoSeg });
+    });
+
+    s.on('partida:configurar', (d, cb) => {
+      const r = salaDocente();
+      if (!r) return err(cb, 'SALA_NO_EXISTE', 'No eres el docente de una sala');
+      if (r.fase !== 'sala') return err(cb, 'PARTIDA_EMPEZADA', 'Solo se puede configurar antes de empezar');
+      d = d || {};
+      if (typeof d.juego === 'string') {
+        if (!Object.prototype.hasOwnProperty.call(JUEGOS, d.juego)) return err(cb, 'JUEGO_DESCONOCIDO', 'Juego no disponible');
+        const nuevoModulo = JUEGOS[d.juego];
+        if (r.orden.length < nuevoModulo.min) return err(cb, 'MIN_JUGADORES', 'Faltan jugadores para ese juego (mínimo ' + nuevoModulo.min + ')');
+        if (r.orden.length > nuevoModulo.max) return err(cb, 'SALA_LLENA', 'Demasiados jugadores para ese juego (máximo ' + nuevoModulo.max + ')');
+        r.juego = d.juego;
+        r.modulo = nuevoModulo;
+      }
+      if (Array.isArray(d.banco) || Array.isArray(d.preguntas)) {
+        const banco = Preguntas.normalizarBanco(d.banco || d.preguntas, { max: lim.maxBanco });
+        if (!banco.preguntas.length) return err(cb, 'SIN_PREGUNTAS', 'No hay preguntas válidas');
+        r.bancoPreguntas = banco.preguntas;
+        r.mazo = Preguntas.crearMazo(banco.preguntas, { rng: rng, mezclarOpciones: (d.ajustes && d.ajustes.mezclarOpciones) !== false });
+      }
+      const a = d.ajustes && typeof d.ajustes === 'object' ? d.ajustes : {};
+      const ajustes = Object.assign({}, r.ajustes || {});
+      if (a.trackLength !== undefined) { const v = Math.max(5, Math.min(50, +a.trackLength | 0)); ajustes.trackLength = v; }
+      if (a.rows !== undefined) { const v = Math.max(4, Math.min(12, +a.rows | 0)); ajustes.rows = v; }
+      if (a.cols !== undefined) { const v = Math.max(4, Math.min(12, +a.cols | 0)); ajustes.cols = v; }
+      if (a.hpTotal !== undefined) { const v = Math.max(50, Math.min(500, +a.hpTotal | 0)); ajustes.hpTotal = v; }
+      r.ajustes = ajustes;
+      if (d.turnoSeg !== undefined) {
+        r.turnoSeg = d.turnoSeg ? Math.min(lim.turnoMax, Math.max(lim.turnoMin, +d.turnoSeg | 0)) : 0;
+      }
+      if (d.tiempoSeg !== undefined) {
+        r.tiempoSeg = d.tiempoSeg ? Math.min(lim.tiempoMax, Math.max(lim.tiempoMin, +d.tiempoSeg | 0)) : 0;
+      } else if (a.timeSeconds !== undefined) {
+        r.tiempoSeg = a.timeSeconds ? Math.min(lim.tiempoMax, Math.max(lim.tiempoMin, +a.timeSeconds | 0)) : 0;
+      }
+      emitSala(r);
+      ack(cb, { ok: true, juego: r.juego, ajustes: r.ajustes, turnoSeg: r.turnoSeg, tiempoSeg: r.tiempoSeg });
     });
 
     s.on('partida:docente-volver', (d, cb) => {
@@ -350,8 +397,12 @@ function attach(io, opts) {
       if (++w.n > lim.accionesPorSeg) return err(cb, 'DEMASIADAS_ACCIONES', 'Más despacio');
 
       d = d && typeof d === 'object' ? d : {};
-      const accion = { tipo: typeof d.tipo === 'string' ? d.tipo.slice(0, 24) : '' };
+      const accion = {};
+      if (typeof d.tipo === 'string') accion.tipo = d.tipo.slice(0, 24);
       if (d.eleccion !== undefined) accion.eleccion = d.eleccion;
+      if (d.zona !== undefined) accion.zona = d.zona;
+      if (d.idx !== undefined) accion.idx = d.idx;
+      if (d.casilla !== undefined) accion.casilla = d.casilla;
       const res = r.modulo.act(r.estado, asientoDe(r, p.pid), accion, { rng: rng, mazo: r.mazo });
       if (res.error) return err(cb, res.error.codigo, res.error.mensaje);
       aplicar(r, res);

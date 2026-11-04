@@ -92,21 +92,42 @@ App.red = (function () {
       const c = tarjeta('👩‍🏫 Crear sala (docente)');
       const cursos = [['', 'Todos los cursos']].concat(App.storage.getCourses().map((x) => [x.id, x.nombre]));
       const selCurso = select(cursos, '');
+      const selJuego = select([['ludo', 'Ludo'], ['carrera', 'Carrera'], ['conquista', 'Conquista'], ['batalla', 'Batalla']], 'ludo');
       const clave = input('password', '', 'Clave del docente (HOST_KEY)');
       const selTurno = select([[30, '30 s'], [60, '60 s'], [90, '90 s'], [120, '2 min']], 90);
       const selTotal = select([[0, 'Sin límite'], [600, '10 min'], [1200, '20 min'], [1800, '30 min']], 0);
+      // ajustes
+      const track = input('number', '30', 'Longitud pista (Carrera)');
+      track.min = 5; track.max = 50;
+      const rows = input('number', '8', 'Filas (Conquista)');
+      rows.min = 4; rows.max = 12;
+      const cols = input('number', '8', 'Columnas (Conquista)');
+      cols.min = 4; cols.max = 12;
+      const hp = input('number', '100', 'Vida por equipo (Batalla)');
+      hp.min = 50; hp.max = 500;
       c.appendChild(campo('Curso (de dónde salen las preguntas)', selCurso));
+      c.appendChild(campo('Juego', selJuego));
       c.appendChild(campo('Clave del docente (déjala vacía si el servidor no tiene HOST_KEY)', clave));
       c.appendChild(campo('Tiempo por turno', selTurno));
       c.appendChild(campo('Tiempo total de la partida', selTotal));
-      const btn = ui.el('button', 'btn-primary', '➕ Crear sala de Ludo');
+      c.appendChild(campo('Carrera - Longitud de pista', track));
+      c.appendChild(campo('Conquista - Filas', rows));
+      c.appendChild(campo('Conquista - Columnas', cols));
+      c.appendChild(campo('Batalla - Vida total por equipo', hp));
+      const btn = ui.el('button', 'btn-primary', '➕ Crear sala');
       btn.addEventListener('click', () => {
         const preguntas = banco(selCurso.value);
         if (!preguntas.length) { toast('Ese curso no tiene preguntas.', 'warn'); return; }
         btn.disabled = true;
+        const juego = selJuego.value;
+        const ajustes = {};
+        if (juego === 'carrera') ajustes.trackLength = +track.value || 30;
+        if (juego === 'conquista') { ajustes.rows = +rows.value || 8; ajustes.cols = +cols.value || 8; }
+        if (juego === 'batalla') ajustes.hpTotal = +hp.value || 100;
         App.net.crear({
-          juego: 'ludo', key: clave.value, banco: preguntas,
-          turnoSeg: +selTurno.value, tiempoSeg: +selTotal.value
+          juego: juego, key: clave.value, banco: preguntas,
+          turnoSeg: +selTurno.value, tiempoSeg: +selTotal.value,
+          ajustes: ajustes
         }).then((r) => {
           btn.disabled = false;
           if (!r.ok) { toast(r.mensaje || r.error || 'No se pudo crear la sala', 'error'); return; }
@@ -148,7 +169,8 @@ App.red = (function () {
     const docente = NET.rol() === 'docente';
     const codigo = NET.codigo();
 
-    raiz.appendChild(ui.el('h2', 'text-2xl font-bold mb-1', '🌐 Sala de Ludo'));
+    const nomJuego = (function(){ const s=NET.sala(); const j=s&&s.juego; if(j==='carrera')return 'Carrera'; if(j==='conquista')return 'Conquista'; if(j==='batalla')return 'Batalla'; return 'Ludo'; })();
+    raiz.appendChild(ui.el('h2', 'text-2xl font-bold mb-1', '🌐 Sala de ' + nomJuego));
     const cab = tarjeta('');
     cab.appendChild(ui.el('div', 'text-sm text-slate-400', 'Código de la sala'));
     const big = ui.el('div', '', esc(codigo));
@@ -232,8 +254,18 @@ App.red = (function () {
     App.ludoInGame = true;
     const cont = ui.el('div', '', '');
     raiz.appendChild(cont);
+    const sala = NET.sala ? NET.sala() : {};
+    const juego = sala.juego || 'ludo';
     try {
-      App.games.ludo.initNet({ container: cont, codigo: NET.codigo(), rol: NET.rol(), yo: NET.yo() });
+      if (juego === 'ludo' && App.games && App.games.ludo && typeof App.games.ludo.initNet === 'function') {
+        App.games.ludo.initNet({ container: cont, codigo: NET.codigo(), rol: NET.rol(), yo: NET.yo() });
+        return;
+      }
+      if (App.games && App.games[juego] && typeof App.games[juego].initNet === 'function') {
+        App.games[juego].initNet({ container: cont, codigo: NET.codigo(), rol: NET.rol(), yo: NET.yo() });
+        return;
+      }
+      cont.appendChild(ui.el('div', 'p-4 text-amber-700 bg-amber-50 rounded', 'Este juego en red aún no tiene vista cliente (falta initNet). Juego: ' + esc(juego)));
     } catch (e) {
       console.error(e);
       cont.appendChild(ui.el('div', 'p-4 text-rose-700 bg-rose-50 rounded', 'No se pudo dibujar la partida: ' + esc(e.message)));

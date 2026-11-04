@@ -4,5 +4,7 @@
  * terminarPorTiempo, view, min, max). Para sumar un juego: agregarlo aquí. */
 module.exports = {
   ludo: require('../js/shared/ludo-rules.js'),
-  carrera: require('../js/shared/carrera-rules.js')
+  carrera: require('../js/shared/carrera-rules.js'),
+  conquista: require('../js/shared/conquista-rules.js'),
+  batalla: require('../js/shared/batalla-rules.js')
 };

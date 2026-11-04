@@ -159,7 +159,7 @@ App.net = (function () {
 
   return {
     conectar: conectar, reanudar: reanudar,
-    crear: crear, unirse: unirse,
+    crear: crear, unirse: unirse, configurar: function (d) { return pedir('partida:configurar', d || {}); },
     iniciar: function () { return pedir('partida:iniciar', {}); },
     saltar: function () { return pedir('partida:saltar-turno', {}); },
     expulsar: function (asiento) { return pedir('partida:expulsar', { asiento: asiento }); },
