@@ -449,5 +449,690 @@ if (owner !== -1 && owner < state.players.length) {
     startTurn();
   }
 
-  return { init, MODE };
+  /* ============================================================
+   * MODO RED: el servidor lleva la partida y esta misma vista la dibuja.
+   * Comparte tablero, constantes, fichas y estilos con el modo local.
+   * config = { container, escenaCapa?, codigo, rol, yo }
+   * ============================================================ */
+  function initNet(config) {
+    const NET = App.net;
+    const esc = (s) => String(s == null ? '' : s).replace(/[&<>"']/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c]));
+    if (!NET) {
+      config.container.appendChild(ui.el('p', 'text-sm text-slate-400', 'La partida en red no está disponible.'));
+      return;
+    }
+
+    const root = config.container;
+    const rol = config.rol || NET.rol() || 'alumno';
+    const codigo = config.codigo || NET.codigo() || '';
+    const SH = ['▲', '◆', '●', '■'];
+    const BOARD = { W: 384, H: 384, CELL: 24, MARGIN: 12 };
+
+    let est = NET.estado();
+    let preg = NET.pregunta();
+    let fin = NET.fin();
+    let registro = NET.registro();
+    let log = [];
+    let venc = NET.vencimientos();
+    let off = venc.off || 0;
+    let turnoVence = venc.turno;
+    let partidaVence = venc.partida;
+    let enviando = false;
+    let vivo = true;
+
+    /* ---------- tablero ---------- */
+    const enEscena = !!config.escenaCapa;
+    const frame = ui.el('div', 'l-board-frame' + (enEscena ? ' l-en-escena' : ''), '');
+    frame.innerHTML = '<div class="ludo-grid"></div><div class="ludo-tokens"></div>';
+    if (enEscena) config.escenaCapa.appendChild(frame); else root.appendChild(frame);
+    const gridEl = frame.querySelector('.ludo-grid');
+    const tokensEl = frame.querySelector('.ludo-tokens');
+
+    if (!enEscena) {
+      const pathCoord = {};
+      PATH.forEach((c, i) => { pathCoord[c.join('-')] = i; });
+      const homeCoord = {};
+      HOME_STRETCH.forEach((lane, pi) => lane.forEach((c) => { homeCoord[c.join('-')] = pi; }));
+      const n = (NET.sala() && NET.sala().jugadores.length) || 4;
+      for (let r = 0; r < N; r++) {
+        for (let c = 0; c < N; c++) {
+          const key = r + '-' + c;
+          const cell = ui.el('div', 'l-cell', '');
+          let owner = -1;
+          BASE_ORIGIN.forEach((o, pi) => { if (r >= o[0] && r <= o[0] + 5 && c >= o[1] && c <= o[1] + 5) owner = pi; });
+          const inHome = homeCoord[key];
+          if (owner !== -1 && owner < n) {
+            cell.classList.add('l-base', 'l-base-' + ['rojo', 'verde', 'azul', 'amarillo'][owner]);
+            if (YARD_SLOTS.some((s) => BASE_ORIGIN[owner][0] + s[0] === r && BASE_ORIGIN[owner][1] + s[1] === c)) cell.appendChild(ui.el('span', 'l-yard', ''));
+          } else if (key === '7-7') {
+            cell.classList.add('l-meta');
+            cell.appendChild(ui.el('span', '', '🏆'));
+          } else if (inHome !== undefined && inHome < n) {
+            cell.classList.add('l-home', 'l-home-' + ['rojo', 'verde', 'azul', 'amarillo'][inHome]);
+          } else if (pathCoord[key] !== undefined) {
+            const g = pathCoord[key];
+            cell.classList.add('l-path');
+            if (SAFE[g]) cell.appendChild(ui.el('span', 'l-sp', '⭐'));
+            else if (RETO[g]) cell.appendChild(ui.el('span', 'l-sp', '❓'));
+            else if (AVANCE[g]) cell.appendChild(ui.el('span', 'l-sp', '⬆'));
+            else if (RETRO[g]) cell.appendChild(ui.el('span', 'l-sp', '⏪'));
+          } else cell.classList.add('l-empty');
+          gridEl.appendChild(cell);
+        }
+      }
+    }
+
+    const META = 56;
+    function celdaDe(asiento, pos) {
+      if (pos < 0) {
+        const o = BASE_ORIGIN[asiento] || BASE_ORIGIN[0];
+        const s = YARD_SLOTS[0];
+        return [o[0] + s[0], o[1] + s[1]];
+      }
+      if (pos >= META) return CENTER.slice();
+      if (pos < 51) return PATH[(START[asiento] + pos) % 52].slice();
+      return (HOME_STRETCH[asiento] || HOME_STRETCH[0])[Math.min(4, pos - 51)].slice();
+    }
+    function pct(rc) {
+      if (enEscena) {
+        const x = BOARD.MARGIN + rc[1] * BOARD.CELL + BOARD.CELL / 2;
+        const y = BOARD.MARGIN + rc[0] * BOARD.CELL + BOARD.CELL / 2;
+        return { left: x / BOARD.W * 100, top: y / BOARD.H * 100 };
+      }
+      return { left: (rc[1] + 0.5) / N * 100, top: (rc[0] + 0.5) / N * 100 };
+    }
+
+    const COLORES = ['rojo', 'verde', 'azul', 'amarillo'];
+    const listaAsientos = () => (est ? est.asientos : (NET.sala() ? NET.sala().jugadores : []));
+
+    function asegurarFichas() {
+      const lista = listaAsientos();
+      if (!lista.length) return;
+      if (tokensEl.childElementCount === lista.length) return;
+      tokensEl.innerHTML = '';
+      lista.forEach((a, i) => {
+        const dot = ui.el('div', 'l-token l-token-' + (a.color || COLORES[i % 4]), '');
+        const cnv = document.createElement('canvas');
+        cnv.width = cnv.height = 26;
+        cnv.className = 'avatar-canvas';
+        const g = cnv.getContext('2d');
+        App.avatars.drawIcon(g, 5, 5, 1, App.avatars.pick((+a.avatar || i) % 5), 'right');
+        dot.appendChild(cnv);
+        tokensEl.appendChild(dot);
+      });
+    }
+
+    function colocar() {
+      const lista = listaAsientos();
+      if (!lista.length) return;
+      asegurarFichas();
+      const dots = tokensEl.children;
+      const n = lista.length;
+      const ocupadas = lista.map((a, i) => celdaDe(i, est ? a.pos : -1).join(','));
+      lista.forEach((a, i) => {
+        const dot = dots[i];
+        if (!dot) return;
+        const rc = celdaDe(i, est ? a.pos : -1);
+        const p = pct(rc);
+        const repetida = est && a.pos >= 0 && ocupadas.some((o, k) => k !== i && o === rc.join(','));
+        const dx = repetida ? (i - (n - 1) / 2) * 1.4 : 0;
+        dot.style.left = (p.left + dx) + '%';
+        dot.style.top = p.top + '%';
+      });
+    }
+
+    /* ---------- panel lateral ---------- */
+    const hd = ui.el('div', 'text-sm text-slate-300', '');
+    const tm = ui.el('div', 'text-sm font-bold text-amber-300', '');
+    const act = ui.el('div', '', '');
+    const pl = ui.el('div', 'flex flex-wrap gap-2 justify-center', '');
+    const lg = ui.el('div', 'text-xs text-slate-400 space-y-1', '');
+    root.appendChild(hd);
+    root.appendChild(tm);
+    root.appendChild(act);
+    root.appendChild(pl);
+    root.appendChild(lg);
+
+    const yo = () => (rol === 'docente' ? null : NET.yo());
+    const esMiTurno = () => est && est.espera && est.espera.asiento === yo();
+    const nombre = (a) => {
+      const lista = listaAsientos();
+      return (lista[a] && lista[a].nombre) || ('Jugador ' + (a + 1));
+    };
+
+    function reloj() {
+      const now = Date.now() + off;
+      const p = [];
+      if (turnoVence) p.push('⏱ Turno: ' + Math.max(0, Math.ceil((turnoVence - now) / 1000)) + ' s');
+      if (partidaVence) {
+        const s = Math.max(0, Math.ceil((partidaVence - now) / 1000));
+        p.push('🏁 Partida: ' + Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0'));
+      }
+      return p.join('   ·   ');
+    }
+
+    function pintarJugadores() {
+      pl.innerHTML = '';
+      const lista = listaAsientos();
+      const sala = NET.sala();
+      lista.forEach((a, i) => {
+        const online = !sala || !sala.jugadores[i] || sala.jugadores[i].online;
+        const chip = ui.el('div', 'l-chip' + (est && est.espera && est.espera.asiento === i ? ' l-chip-active' : ''), '');
+        chip.appendChild(App.avatars.badge(App.avatars.pick((+a.avatar || i) % 5), 22));
+        chip.appendChild(ui.el('span', 'text-xs font-semibold', esc(a.nombre) + (yo() === i ? ' (tú)' : '')));
+        const pos = est ? (a.pos < 0 ? 'base' : a.pos >= META ? 'meta' : 'casilla ' + (a.pos + 1)) : '';
+        chip.appendChild(ui.el('span', 'l-chip-pos', pos + (online ? '' : ' · desconectado')));
+        pl.appendChild(chip);
+      });
+    }
+
+    function pintarLog() {
+      lg.innerHTML = '';
+      if (!log.length) { lg.appendChild(ui.el('span', '', 'Todavía nada…')); return; }
+      log.slice(0, 6).forEach((l) => lg.appendChild(ui.el('div', '', esc(l))));
+    }
+
+    function registrar(evs) {
+      (evs || []).forEach((ev) => {
+        let t = null;
+        if (ev.t === 'dado') t = '🎲 ' + nombre(ev.asiento) + ' sacó ' + ev.valor;
+        else if (ev.t === 'respondida') t = (ev.correcto ? '✅ ' : '❌ ') + nombre(ev.asiento) + (ev.correcto ? ' acertó' : ' falló');
+        else if (ev.t === 'especial') t = ev.tipo === 'avance' ? '⬆ ' + nombre(ev.asiento) + ' avanza +2' : ev.tipo === 'retroceso' ? '⏪ ' + nombre(ev.asiento) + ' retrocede 2' : '❓ ' + nombre(ev.asiento) + ' cae en un reto';
+        else if (ev.t === 'turno-saltado') t = '⏭ Turno de ' + nombre(ev.asiento) + ' saltado (' + ({ tiempo: 'tiempo', desconexion: 'desconectado', docente: 'lo saltó el docente' }[ev.motivo] || ev.motivo) + ')';
+        if (!t) return;
+        log.unshift(t);
+        if (ev.t === 'respondida') {
+          if (ev.asiento === yo()) {
+            ui.sound(ev.correcto ? 'correct' : 'wrong');
+            ui.toast(ev.correcto ? '✅ ¡Correcto!' : '❌ Incorrecto', ev.correcto ? 'success' : 'error');
+          }
+        }
+      });
+      log = log.slice(0, 6);
+    }
+
+    function preguntar() {
+      act.innerHTML = '';
+      const card = ui.el('div', 'q-card', '');
+      card.appendChild(ui.el('div', 'text-xs text-slate-400 mb-1',
+        esc(preg.categoria || '') + (preg.dificultad ? ' · ' + esc(preg.dificultad) : '')));
+      card.appendChild(ui.el('h3', 'q-text text-slate-900', esc(preg.enunciado)));
+      const list = ui.el('div', 'grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4', '');
+      const puedo = esMiTurno();
+      preg.opciones.forEach((op, i) => {
+        const b = ui.el('button', 'opt-btn s' + i,
+          '<span class="opt-key">' + SH[i % 4] + '</span><span class="opt-label">' + esc(op) + '</span>');
+        if (!puedo) b.disabled = true;
+        b.addEventListener('click', () => {
+          if (enviando) return;
+          enviando = true;
+          act.querySelectorAll('.opt-btn').forEach((x) => { x.disabled = true; });
+          NET.accion({ tipo: 'responder', eleccion: i }).then((r) => {
+            enviando = false;
+            if (!r || !r.ok) {
+              ui.toast((r && (r.mensaje || r.error)) || 'No se pudo responder', 'error');
+              pintar();
+            }
+          });
+        });
+        list.appendChild(b);
+      });
+      card.appendChild(list);
+      act.appendChild(card);
+      if (!puedo) act.appendChild(ui.el('p', 'text-xs text-slate-400 mt-2', nombre(est.espera.asiento) + ' está respondiendo…'));
+    }
+
+    function pintarFinal() {
+      const f = fin || (est && { ganador: est.ganador, motivo: est.motivoFin, clasificacion: [] });
+      if (!f) return;
+      const g = (f.clasificacion || []).find((c) => c.asiento === f.ganador);
+      act.innerHTML = '';
+      act.appendChild(ui.el('div', 'fin-title', '🏆 ' + esc(g ? g.nombre : nombre(f.ganador))));
+      act.appendChild(ui.el('p', 'text-sm text-slate-400 text-center',
+        f.motivo === 'meta' ? 'llegó primero a la meta' : 'iba más adelantado cuando se acabó el tiempo'));
+      (f.clasificacion || []).forEach((c, k) => {
+        const row = ui.el('div', 'fin-row', '');
+        row.appendChild(ui.el('span', 'text-lg', ['🥇', '🥈', '🥉', '🏅'][k] || '🏅'));
+        row.appendChild(App.avatars.badge(App.avatars.pick((+c.avatar || c.asiento) % 5), 22));
+        row.appendChild(ui.el('div', 'flex-1', '<b>' + esc(c.nombre) + '</b><span class="text-xs text-slate-400"> ' +
+          (c.llego ? 'meta' : c.pos < 0 ? 'en la base' : 'casilla ' + c.pos) + '</span>'));
+        act.appendChild(row);
+      });
+      if (registro) act.appendChild(ui.el('p', 'text-sm text-center mt-2', 'Respondiste bien <b>' +
+        registro.respuestas.filter((r) => r.correcto).length + '</b> de <b>' + registro.respuestas.length + '</b> preguntas.'));
+      const volver = ui.el('button', 'btn-primary w-full mt-3', 'Volver al inicio');
+      volver.addEventListener('click', () => { limpiar(); App.go(rol === 'docente' ? 'inicio' : 'red'); });
+      act.appendChild(volver);
+      if (rol === 'docente') {
+        const cerrar = ui.el('button', 'btn-ghost w-full mt-2', 'Cerrar sala');
+        cerrar.addEventListener('click', () => NET.cerrar().then(() => App.go('inicio')));
+        act.appendChild(cerrar);
+      }
+    }
+
+    function pintar() {
+      if (!vivo || !document.body.contains(frame)) { limpiar(); return; }
+      colocar();
+      hd.innerHTML = 'Sala <b>' + esc(codigo) + '</b> · Ludo en red' +
+        (rol === 'docente' ? ' · vista del docente' : '');
+      tm.textContent = reloj();
+      pintarJugadores();
+      pintarLog();
+
+      if (fin || (est && est.fase === 'terminada')) return pintarFinal();
+
+      act.innerHTML = '';
+      if (!est) {
+        act.appendChild(ui.el('p', 'text-sm text-slate-400', 'Esperando el estado de la partida…'));
+      } else if (est.fase === 'tirar') {
+        if (esMiTurno()) {
+          const b = ui.el('button', 'btn-primary w-full', '🎲 Tirar el dado');
+          b.addEventListener('click', () => {
+            b.disabled = true;
+            NET.accion({ tipo: 'tirar' }).then((r) => {
+              if (!r || !r.ok) {
+                b.disabled = false;
+                ui.toast((r && (r.mensaje || r.error)) || 'No se pudo tirar', 'error');
+              }
+            });
+          });
+          act.appendChild(b);
+        } else {
+          act.appendChild(ui.el('p', 'text-sm text-slate-400', 'Turno de ' + esc(nombre(est.espera.asiento)) + ': va a tirar el dado…'));
+        }
+      } else if (est.fase === 'responder') {
+        if (est.dado) act.appendChild(ui.el('div', 'dice-box mb-2', '🎲 ' + est.dado));
+        if (est.pendiente && est.pendiente.tipo === 'reto') act.appendChild(ui.el('p', 'text-sm text-amber-300', '❓ Reto: acierta y avanzas 2 casillas más.'));
+        if (preg && preg.v === est.v) preguntar();
+        else act.appendChild(ui.el('p', 'text-sm text-slate-400', 'Cargando pregunta…'));
+      }
+
+      if (rol === 'docente') {
+        const fila = ui.el('div', 'flex gap-2 mt-3', '');
+        const saltar = ui.el('button', 'btn-ghost text-xs', '⏭ Saltar turno');
+        saltar.addEventListener('click', () => NET.saltar().then((r) => { if (!r.ok) ui.toast(r.mensaje || r.error, 'warn'); }));
+        const cerrar = ui.el('button', 'btn-ghost text-xs', '✕ Cerrar sala');
+        cerrar.addEventListener('click', () => {
+          if (confirm('¿Cerrar la sala? Se acaba la partida para todos.')) NET.cerrar().then(() => App.go('inicio'));
+        });
+        fila.append(saltar, cerrar);
+        act.appendChild(fila);
+      }
+    }
+
+    /* ---------- eventos ---------- */
+    const offs = [];
+    function limpiar() {
+      if (!vivo) return;
+      vivo = false;
+      offs.forEach((fn) => { try { fn(); } catch (e) { /* noop */ } });
+      clearInterval(tick);
+    }
+    function alCerrar() {
+      limpiar();
+      ui.toast('El docente cerró la sala', 'warn');
+      App.go('inicio');
+    }
+    function alExpulsar() {
+      limpiar();
+      ui.toast('El docente te sacó de la sala', 'warn');
+      App.go('red');
+    }
+
+    offs.push(NET.on('estado', (p) => {
+      if (!p) return;
+      est = p.estado || null;
+      turnoVence = p.turnoVence || null;
+      partidaVence = p.partidaVence || null;
+      off = (p.ahora || Date.now()) - Date.now();
+      registrar(p.eventos);
+      pintar();
+    }));
+    offs.push(NET.on('pregunta', (q) => { preg = q; pintar(); }));
+    offs.push(NET.on('sala', () => pintar()));
+    offs.push(NET.on('fin', (f) => { fin = f; pintar(); }));
+    offs.push(NET.on('registro', (r) => { registro = r; pintar(); }));
+    offs.push(NET.on('cerrada', alCerrar));
+    offs.push(NET.on('expulsado', alExpulsar));
+
+    const tick = setInterval(() => {
+      if (!vivo || !document.body.contains(frame)) { limpiar(); return; }
+      tm.textContent = reloj();
+    }, 250);
+
+    pintar();
+  }
+
+  /* MODO RED */
+  function initNet(config) {
+    const NET = App.net;
+    if (!NET) {
+      config.container.appendChild(ui.el('p', 'text-sm text-slate-400', 'La partida en red no está disponible.'));
+      return;
+    }
+
+    const root = config.container;
+    const rol = config.rol || NET.rol() || 'alumno';
+    const codigo = config.codigo || NET.codigo() || '';
+    const SH = ['▲', '◆', '●', '■'];
+
+    let est = NET.estado();
+    let preg = NET.pregunta();
+    let fin = NET.fin();
+    let registro = NET.registro();
+    let log = [];
+    let venc = NET.vencimientos();
+    let off = venc.off || 0;
+    let turnoVence = venc.turno;
+    let partidaVence = venc.partida;
+    let enviando = false;
+    let vivo = true;
+
+    const enEscena = !!config.escenaCapa;
+    const frame = ui.el('div', 'l-board-frame' + (enEscena ? ' l-en-escena' : ''), '');
+    frame.innerHTML = '<div class="ludo-grid"></div><div class="ludo-tokens"></div>';
+    if (enEscena) config.escenaCapa.appendChild(frame); else root.appendChild(frame);
+    const gridEl = frame.querySelector('.ludo-grid');
+    const tokensEl = frame.querySelector('.ludo-tokens');
+
+    if (!enEscena) {
+      const pathCoord = {};
+      PATH.forEach((c, i) => { pathCoord[c.join('-')] = i; });
+      const homeCoord = {};
+      HOME_STRETCH.forEach((lane, pi) => lane.forEach((c) => { homeCoord[c.join('-')] = pi; }));
+      const n = (NET.sala() && NET.sala().jugadores.length) || 4;
+      for (let r = 0; r < N; r++) {
+        for (let c = 0; c < N; c++) {
+          const key = r + '-' + c;
+          const cell = ui.el('div', 'l-cell', '');
+          let owner = -1;
+          BASE_ORIGIN.forEach((o, pi) => { if (r >= o[0] && r <= o[0] + 5 && c >= o[1] && c <= o[1] + 5) owner = pi; });
+          const inHome = homeCoord[key];
+          if (owner !== -1 && owner < n) {
+            cell.classList.add('l-base', 'l-base-' + ['rojo', 'verde', 'azul', 'amarillo'][owner]);
+            if (YARD_SLOTS.some((s) => BASE_ORIGIN[owner][0] + s[0] === r && BASE_ORIGIN[owner][1] + s[1] === c)) cell.appendChild(ui.el('span', 'l-yard', ''));
+          } else if (key === '7-7') {
+            cell.classList.add('l-meta');
+            cell.appendChild(ui.el('span', '', '🏆'));
+          } else if (inHome !== undefined && inHome < n) {
+            cell.classList.add('l-home', 'l-home-' + ['rojo', 'verde', 'azul', 'amarillo'][inHome]);
+          } else if (pathCoord[key] !== undefined) {
+            const g = pathCoord[key];
+            cell.classList.add('l-path');
+            if (SAFE[g]) cell.appendChild(ui.el('span', 'l-sp', '⭐'));
+            else if (RETO[g]) cell.appendChild(ui.el('span', 'l-sp', '❓'));
+            else if (AVANCE[g]) cell.appendChild(ui.el('span', 'l-sp', '⬆'));
+            else if (RETRO[g]) cell.appendChild(ui.el('span', 'l-sp', '⏪'));
+          } else cell.classList.add('l-empty');
+          gridEl.appendChild(cell);
+        }
+      }
+    }
+
+    const META = 56;
+    function celdaDe(asiento, pos) {
+      if (pos < 0) {
+        const o = BASE_ORIGIN[asiento] || BASE_ORIGIN[0];
+        const s2 = YARD_SLOTS[0];
+        return [o[0] + s2[0], o[1] + s2[1]];
+      }
+      if (pos >= META) return CENTER.slice();
+      if (pos < 51) return PATH[(START[asiento] + pos) % 52].slice();
+      return (HOME_STRETCH[asiento] || HOME_STRETCH[0])[Math.min(4, pos - 51)].slice();
+    }
+    function pct(rc) {
+      if (enEscena) {
+        const x = 12 + rc[1] * 24 + 12;
+        const y = 12 + rc[0] * 24 + 12;
+        return { left: x / 384 * 100, top: y / 384 * 100 };
+      }
+      return { left: (rc[1] + 0.5) / N * 100, top: (rc[0] + 0.5) / N * 100 };
+    }
+
+    const COLORES = ['rojo', 'verde', 'azul', 'amarillo'];
+    const listaAsientos = () => (est ? est.asientos : (NET.sala() ? NET.sala().jugadores : []));
+
+    function asegurarFichas() {
+      const lista = listaAsientos();
+      if (!lista.length) return;
+      if (tokensEl.childElementCount === lista.length) return;
+      tokensEl.innerHTML = '';
+      lista.forEach((a, i) => {
+        const dot = ui.el('div', 'l-token l-token-' + (a.color || COLORES[i % 4]), '');
+        const cnv = document.createElement('canvas');
+        cnv.width = cnv.height = 26;
+        cnv.className = 'avatar-canvas';
+        const g = cnv.getContext('2d');
+        if (App.avatars && App.avatars.drawIcon) App.avatars.drawIcon(g, 5, 5, 1, App.avatars.pick((+a.avatar || i) % 5), 'right');
+        dot.appendChild(cnv);
+        tokensEl.appendChild(dot);
+      });
+    }
+
+    function colocar() {
+      const lista = listaAsientos();
+      if (!lista.length) return;
+      asegurarFichas();
+      const dots = tokensEl.children;
+      const n = lista.length;
+      const ocupadas = lista.map((a, i) => celdaDe(i, est ? a.pos : -1).join(','));
+      lista.forEach((a, i) => {
+        const dot = dots[i];
+        if (!dot) return;
+        const rc = celdaDe(i, est ? a.pos : -1);
+        const p = pct(rc);
+        const repetida = est && a.pos >= 0 && ocupadas.some((o, k) => k !== i && o === rc.join(','));
+        const dx = repetida ? (i - (n - 1) / 2) * 1.4 : 0;
+        dot.style.left = (p.left + dx) + '%';
+        dot.style.top = p.top + '%';
+      });
+    }
+
+    const hd = ui.el('div', 'text-sm text-slate-300', '');
+    const tm = ui.el('div', 'text-sm font-bold text-amber-300', '');
+    const act = ui.el('div', '', '');
+    const pl = ui.el('div', 'flex flex-wrap gap-2 justify-center', '');
+    const lg = ui.el('div', 'text-xs text-slate-400 space-y-1', '');
+    root.appendChild(hd);
+    root.appendChild(tm);
+    root.appendChild(act);
+    root.appendChild(pl);
+    root.appendChild(lg);
+
+    const yo = () => (rol === 'docente' ? null : NET.yo());
+    const esMiTurno = () => est && est.espera && est.espera.asiento === yo();
+    const nombre = (a) => {
+      const lista = listaAsientos();
+      return (lista[a] && lista[a].nombre) || ('Jugador ' + (a + 1));
+    };
+
+    function reloj() {
+      const now = Date.now() + off;
+      const p = [];
+      if (turnoVence) p.push('⏱ Turno: ' + Math.max(0, Math.ceil((turnoVence - now) / 1000)) + ' s');
+      if (partidaVence) {
+        const s2 = Math.max(0, Math.ceil((partidaVence - now) / 1000));
+        p.push('🏁 Partida: ' + Math.floor(s2 / 60) + ':' + String(s2 % 60).padStart(2, '0'));
+      }
+      return p.join('   ·   ');
+    }
+
+    function pintarJugadores() {
+      pl.innerHTML = '';
+      const lista = listaAsientos();
+      const sala = NET.sala();
+      lista.forEach((a, i) => {
+        const online = !sala || !sala.jugadores[i] || sala.jugadores[i].online;
+        const chip = ui.el('div', 'l-chip' + (est && est.espera && est.espera.asiento === i ? ' l-chip-active' : ''), '');
+        if (App.avatars && App.avatars.badge && App.avatars.pick) chip.appendChild(App.avatars.badge(App.avatars.pick((+a.avatar || i) % 5), 22));
+        chip.appendChild(ui.el('span', 'text-xs font-semibold', (a.nombre || ('Jugador ' + (i + 1))) + (yo() === i ? ' (tú)' : '')));
+        const pos = est ? (a.pos < 0 ? 'base' : a.pos >= META ? 'meta' : 'casilla ' + (a.pos + 1)) : '';
+        chip.appendChild(ui.el('span', 'l-chip-pos', pos + (online ? '' : ' · desconectado')));
+        pl.appendChild(chip);
+      });
+    }
+
+    function pintarLog() {
+      lg.innerHTML = '';
+      if (!log.length) { lg.appendChild(ui.el('span', '', 'Todavía nada…')); return; }
+      log.slice(0, 6).forEach((l) => lg.appendChild(ui.el('div', '', l)));
+    }
+
+    function registrar(evs) {
+      (evs || []).forEach((ev) => {
+        let t = null;
+        if (ev.t === 'dado') t = '🎲 ' + nombre(ev.asiento) + ' sacó ' + ev.valor;
+        else if (ev.t === 'respondida') t = (ev.correcto ? '✅ ' : '❌ ') + nombre(ev.asiento) + (ev.correcto ? ' acertó' : ' falló');
+        else if (ev.t === 'especial') t = ev.tipo === 'avance' ? '⬆ ' + nombre(ev.asiento) + ' avanza +2' : ev.tipo === 'retroceso' ? '⏪ ' + nombre(ev.asiento) + ' retrocede 2' : '❓ ' + nombre(ev.asiento) + ' cae en un reto';
+        else if (ev.t === 'turno-saltado') t = '⏭ Turno de ' + nombre(ev.asiento) + ' saltado';
+        if (!t) return;
+        log.unshift(t);
+        if (ev.t === 'respondida') {
+          if (ev.asiento === yo()) {
+            if (ui.sound) ui.sound(ev.correcto ? 'correct' : 'wrong');
+            if (ui.toast) ui.toast(ev.correcto ? '✅ ¡Correcto!' : '❌ Incorrecto', ev.correcto ? 'success' : 'error');
+          }
+        }
+      });
+      log = log.slice(0, 6);
+    }
+
+    function preguntar() {
+      act.innerHTML = '';
+      const card = ui.el('div', 'q-card', '');
+      card.appendChild(ui.el('div', 'text-xs text-slate-400 mb-1', (preg.categoria || '') + (preg.dificultad ? ' · ' + preg.dificultad : '')));
+      card.appendChild(ui.el('h3', 'q-text text-slate-900', preg.enunciado));
+      const list = ui.el('div', 'grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4', '');
+      const puedo = esMiTurno();
+      preg.opciones.forEach((op, i) => {
+        const b = ui.el('button', 'opt-btn s' + i, '<span class="opt-key">' + SH[i % 4] + '</span><span class="opt-label">' + op + '</span>');
+        if (!puedo) b.disabled = true;
+        b.addEventListener('click', () => {
+          if (enviando) return;
+          enviando = true;
+          act.querySelectorAll('.opt-btn').forEach((x) => { x.disabled = true; });
+          NET.accion({ tipo: 'responder', eleccion: i }).then((r) => {
+            enviando = false;
+            if (!r || !r.ok) {
+              if (ui.toast) ui.toast((r && (r.mensaje || r.error)) || 'No se pudo responder', 'error');
+              pintar();
+            }
+          });
+        });
+        list.appendChild(b);
+      });
+      card.appendChild(list);
+      act.appendChild(card);
+      if (!puedo) act.appendChild(ui.el('p', 'text-xs text-slate-400 mt-2', nombre(est.espera.asiento) + ' está respondiendo…'));
+    }
+
+    function pintarFinal() {
+      const f = fin || (est && { ganador: est.ganador, motivo: est.motivoFin, clasificacion: [] });
+      if (!f) return;
+      const g = (f.clasificacion || []).find((c) => c.asiento === f.ganador);
+      act.innerHTML = '';
+      act.appendChild(ui.el('div', 'fin-title', '🏆 ' + (g ? g.nombre : nombre(f.ganador))));
+      act.appendChild(ui.el('p', 'text-sm text-slate-400 text-center', f.motivo === 'meta' ? 'llegó primero a la meta' : 'iba más adelantado cuando se acabó el tiempo'));
+      (f.clasificacion || []).forEach((c, k) => {
+        const row = ui.el('div', 'fin-row', '');
+        row.appendChild(ui.el('span', 'text-lg', ['🥇', '🥈', '🥉', '🏅'][k] || '🏅'));
+        if (App.avatars && App.avatars.badge && App.avatars.pick) row.appendChild(App.avatars.badge(App.avatars.pick((+c.avatar || c.asiento) % 5), 22));
+        row.appendChild(ui.el('div', 'flex-1', '<b>' + (c.nombre || ('Jugador ' + c.asiento)) + '</b><span class="text-xs text-slate-400"> ' + (c.llego ? 'meta' : c.pos < 0 ? 'en la base' : 'casilla ' + c.pos) + '</span>'));
+        act.appendChild(row);
+      });
+      if (registro) act.appendChild(ui.el('p', 'text-sm text-center mt-2', 'Respondiste bien <b>' + (registro.respuestas.filter((r) => r.correcto).length) + '</b> de <b>' + registro.respuestas.length + '</b> preguntas.'));
+      const volver = ui.el('button', 'btn-primary w-full mt-3', 'Volver al inicio');
+      volver.addEventListener('click', () => { limpiar(); if (rol === 'docente') App.go('inicio'); else App.go('red'); });
+      act.appendChild(volver);
+      if (rol === 'docente') {
+        const cerrar = ui.el('button', 'btn-ghost w-full mt-2', 'Cerrar sala');
+        cerrar.addEventListener('click', () => NET.cerrar().then(() => App.go('inicio')));
+        act.appendChild(cerrar);
+      }
+    }
+
+    function pintar() {
+      if (!vivo || !document.body.contains(frame)) { limpiar(); return; }
+      colocar();
+      hd.innerHTML = 'Sala <b>' + codigo + '</b> · Ludo en red' + (rol === 'docente' ? ' · vista del docente' : '');
+      tm.textContent = reloj();
+      pintarJugadores();
+      pintarLog();
+
+      if (fin || (est && est.fase === 'terminada')) return pintarFinal();
+
+      act.innerHTML = '';
+      if (!est) {
+        act.appendChild(ui.el('p', 'text-sm text-slate-400', 'Esperando el estado de la partida…'));
+      } else if (est.fase === 'tirar') {
+        if (esMiTurno()) {
+          const b = ui.el('button', 'btn-primary w-full', '🎲 Tirar el dado');
+          b.addEventListener('click', () => {
+            b.disabled = true;
+            NET.accion({ tipo: 'tirar' }).then((r) => {
+              if (!r || !r.ok) {
+                b.disabled = false;
+                if (ui.toast) ui.toast((r && (r.mensaje || r.error)) || 'No se pudo tirar', 'error');
+              }
+            });
+          });
+          act.appendChild(b);
+        } else {
+          act.appendChild(ui.el('p', 'text-sm text-slate-400', 'Turno de ' + nombre(est.espera.asiento) + ': va a tirar el dado…'));
+        }
+      } else if (est.fase === 'responder') {
+        if (est.dado) act.appendChild(ui.el('div', 'dice-box mb-2', '🎲 ' + est.dado));
+        if (est.pendiente && est.pendiente.tipo === 'reto') act.appendChild(ui.el('p', 'text-sm text-amber-300', '❓ Reto: acierta y avanzas 2 casillas más.'));
+        if (preg && preg.v === est.v) preguntar();
+        else act.appendChild(ui.el('p', 'text-sm text-slate-400', 'Cargando pregunta…'));
+      }
+
+      if (rol === 'docente') {
+        const fila = ui.el('div', 'flex gap-2 mt-3', '');
+        const saltar = ui.el('button', 'btn-ghost text-xs', '⏭ Saltar turno');
+        saltar.addEventListener('click', () => NET.saltar().then((r) => { if (r && !r.ok && ui.toast) ui.toast(r.mensaje || r.error, 'warn'); }));
+        const cerrar = ui.el('button', 'btn-ghost text-xs', '✕ Cerrar sala');
+        cerrar.addEventListener('click', () => {
+          if (confirm('¿Cerrar la sala? Se acaba la partida para todos.')) NET.cerrar().then(() => App.go('inicio'));
+        });
+        fila.append(saltar, cerrar);
+        act.appendChild(fila);
+      }
+    }
+
+    const offs = [];
+    function limpiar() {
+      if (!vivo) return;
+      vivo = false;
+      offs.forEach((fn) => { try { fn(); } catch (e) {} });
+      clearInterval(tick);
+    }
+    function alCerrar() { limpiar(); if (ui.toast) ui.toast('El docente cerró la sala', 'warn'); App.go('inicio'); }
+    function alExpulsar() { limpiar(); if (ui.toast) ui.toast('El docente te sacó de la sala', 'warn'); App.go('red'); }
+
+    offs.push(NET.on('estado', (p) => {
+      if (!p) return;
+      est = p.estado || null;
+      turnoVence = p.turnoVence || null;
+      partidaVence = p.partidaVence || null;
+      off = (p.ahora || Date.now()) - Date.now();
+      registrar(p.eventos);
+      pintar();
+    }));
+    offs.push(NET.on('pregunta', (q) => { preg = q; pintar(); }));
+    offs.push(NET.on('sala', () => pintar()));
+    offs.push(NET.on('fin', (f) => { fin = f; pintar(); }));
+    offs.push(NET.on('registro', (r) => { registro = r; pintar(); }));
+    offs.push(NET.on('cerrada', alCerrar));
+    offs.push(NET.on('expulsado', alExpulsar));
+
+    const tick = setInterval(() => {
+      if (!vivo || !document.body.contains(frame)) { limpiar(); return; }
+      tm.textContent = reloj();
+    }, 250);
+
+    pintar();
+  }
+
+  return { init, initNet, MODE };
 })(App.ui);
