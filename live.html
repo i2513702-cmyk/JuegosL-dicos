@@ -371,7 +371,7 @@ socket.on('ended',e=>{
   page(`
     <div class="card center" style="flex:1;display:flex;flex-direction:column;align-items:center;justify-content:center;gap:10px">
       <div style="width:min(40vw,160px)">${avatar(mine.avatar)}</div>
-      <h1>${i?(i.rank<=3?['🥇','🥈','🥉'][i.rank-1]:'🎉')}: Puesto ${i?i.rank:'-'}</h1>
+      <h1>${i?(i.rank<=3?['🥇','🥈','🥉'][i.rank-1]:'🎉'):'🎉'}: Puesto ${i?i.rank:'-'}</h1>
       <h2>${i?i.score:0} puntos</h2>
       <button class="btn sm pu" onclick="location.href=location.pathname">Salir</button>
     </div>`);
