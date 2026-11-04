@@ -347,6 +347,7 @@ if (inScene) {
 
 
 
+
   function initNet(config) {
     const NET = App.net;
     const escFn = esc;
@@ -376,8 +377,17 @@ if (inScene) {
     const SCENE = { W: 680, H: 380, BOARD_X: 40, BOARD_Y: 20, CELL_W: 75, CELL_H: 42.5 };
     const mapEl = ui.el('div', 'cq-map', '');
     const inScene = !!config.escenaCapa;
-    if (inScene) config.escenaCapa.appendChild(mapEl);
-    else { mapEl.style.position='relative'; mapEl.style.maxWidth='620px'; mapEl.style.margin='10px auto 0'; mapEl.style.display='grid'; mapEl.style.gap='6px'; mapEl.style.gridTemplateColumns='repeat('+colsM0+',1fr)'; root.appendChild(mapEl); }
+    if (inScene && config.escenaCapa) {
+      config.escenaCapa.appendChild(mapEl);
+    } else {
+      mapEl.style.position='relative';
+      mapEl.style.maxWidth='620px';
+      mapEl.style.margin='10px auto 0';
+      mapEl.style.display='grid';
+      mapEl.style.gap='6px';
+      mapEl.style.gridTemplateColumns='repeat('+colsM0+',1fr)';
+      root.appendChild(mapEl);
+    }
 
     const hud = ui.el('div','flex flex-wrap items-center justify-between gap-2 mb-2','');
     hud.innerHTML = '<div class="text-sm font-bold" id="cq-turn-n"></div>';
@@ -424,7 +434,7 @@ if (inScene) {
             if(pOwner && App.avatars){
               const ch = pOwner.avatar || App.avatars.pick(owner);
               const cnv=document.createElement('canvas'); cnv.width=cnv.height=26; cnv.className='avatar-canvas';
-              const g=cnv.getContext('2d'); if(g) App.avatars.drawIcon(g,5,5,1,ch,'right'); btn.appendChild(cnv);
+              const g=cnv.getContext('2d'); if(g && App.avatars.drawIcon) App.avatars.drawIcon(g,5,5,1,ch,'right'); btn.appendChild(cnv);
             }
             const sStyle = ui.teamStyle ? ui.teamStyle((lista[owner]&&lista[owner].color)||'rojo') : {color:'#94a3b8'};
             btn.style.background=(sStyle.color||'#94a3b8')+'38'; btn.style.boxShadow='inset 0 0 0 2px '+(sStyle.color||'#94a3b8');
@@ -451,7 +461,8 @@ if (inScene) {
       qArea.innerHTML='';
       if(!preg || !preg.enunciado){ qArea.appendChild(ui.el('p','text-sm text-slate-400','Cargando pregunta…')); return; }
       const card = ui.el('div','q-card','');
-      card.appendChild(ui.el('div','text-xs text-slate-400 mb-1',(preg.tipo==='defensa'?'🛡️ Defensa':'⚔️ Ataque')+(preg.categoria?' · '+escFn(preg.categoria):'')+(preg.dificultad?' · '+escFn(preg.dificultad):'')));
+      const tipo = preg.tipo || (est && est.pendiente && est.pendiente.tipo) || 'turno';
+      card.appendChild(ui.el('div','text-xs text-slate-400 mb-1', tipo==='defensa'?'🛡️ Defensa':'⚔️ Ataque'));
       card.appendChild(ui.el('h3','q-text text-slate-900',escFn(preg.enunciado)));
       const list = ui.el('div','grid grid-cols-1 sm:grid-cols-2 gap-3 mt-4','');
       const yo = () => (config.rol==='docente'?null:(NET.yo?NET.yo():null));
@@ -468,7 +479,7 @@ if (inScene) {
       });
       card.appendChild(list);
       qArea.appendChild(card);
-      if(!puedo && est && est.espera){ const lista=(est&&est.asientos)?est.asientos:[]; const nom=lista[est.espera.asiento]?lista[est.espera.asiento].nombre:''; qArea.appendChild(ui.el('p','text-xs text-slate-400 mt-2',escFn(nom)+(preg.tipo==='defensa'?' está defendiendo…':' está respondiendo…'))); }
+      if(!puedo && est && est.espera){ const lista=(est&&est.asientos)?est.asientos:[]; const nom=lista[est.espera.asiento]?lista[est.espera.asiento].nombre:''; qArea.appendChild(ui.el('p','text-xs text-slate-400 mt-2', tipo==='defensa' ? ('Esperando defensa de '+escFn(nom)+'…') : (escFn(nom)+' está respondiendo…'))); }
     }
 
     function pintarPodioNet(){
@@ -485,7 +496,7 @@ if (inScene) {
       const volver = ui.el('button','btn-primary w-full mt-3','Volver al inicio');
       volver.addEventListener('click',()=>{ limpiarNet(); const rolc=config.rol||(NET.rol?NET.rol():'alumno'); App.go(rolc==='docente'?'inicio':'red'); });
       qArea.appendChild(volver);
-      if((config.rol||(NET.rol?NET.rol():''))==='docente'){ const cerr=ui.el('button','btn-ghost w-full mt-2','Cerrar sala'); cerr.addEventListener('click',()=>NET.cerrar().then(()=>App.go('inicio'))); qArea.appendChild(cerr); }
+      if((config.rol||(NET.rol?NET.rol():''))==='docente'){ const saltar = ui.el('button','btn-ghost w-full mt-2','⏭ Saltar turno'); saltar.addEventListener('click',()=>NET.saltar().then((r)=>{ if(r&&!r.ok && ui.toast) ui.toast(r.mensaje||r.error,'warn'); })); const cerr=ui.el('button','btn-ghost w-full mt-2','✕ Cerrar sala'); cerr.addEventListener('click',()=>{ if(confirm('¿Cerrar la sala?')) NET.cerrar().then(()=>App.go('inicio')); }); qArea.appendChild(saltar); qArea.appendChild(cerr); }
     }
 
     function pintarNet(){
@@ -498,27 +509,29 @@ if (inScene) {
       const yo = () => (config.rol==='docente'?null:(NET.yo?NET.yo():null));
       const esMiTurno = () => est && est.espera && est.espera.asiento === yo();
       if(est.fase==='elegir'){
-        if(esMiTurno()){
-          qArea.appendChild(ui.el('p','text-sm mb-2','Elige una zona adyacente a las tuyas o neutral para atacar'));
-          const lista=(est&&est.asientos)?est.asientos:[]; const mapa=est.mapa||[];
-          // find a legal zone quickly? just pick first legal by rules not necessary, allow clicking any adjacent? server validates
-          qArea.appendChild(ui.el('p','text-xs text-slate-400','Selecciona una zona en el mapa (el servidor valida adyacencia)'));
-        }else{
-          const lista=(est&&est.asientos)?est.asientos:[]; const nom=est.espera&&lista[est.espera.asiento]?lista[est.espera.asiento].nombre:'';
-          qArea.appendChild(ui.el('p','text-sm text-slate-400',escFn(nom)+' está eligiendo zona…'));
-        }
+        if(config.rol==='docente'){ qArea.appendChild(ui.el('p','text-sm text-slate-400','Vista del docente')); return; }
+        if(esMiTurno()){ qArea.appendChild(ui.el('p','text-sm mb-2','Elige una zona adyacente a las tuyas o neutral para atacar')); qArea.appendChild(ui.el('p','text-xs text-slate-400','Selecciona una zona en el mapa')); }
+        else { const lista=(est&&est.asientos)?est.asientos:[]; const nom=est.espera&&lista[est.espera.asiento]?lista[est.espera.asiento].nombre:''; qArea.appendChild(ui.el('p','text-sm text-slate-400',escFn(nom)+' está eligiendo zona…')); }
       }else if(est.fase==='responder' || est.fase==='defensa'){
+        if(config.rol==='docente'){ qArea.appendChild(ui.el('p','text-sm text-slate-400','Vista del docente')); return; }
         if(preg && preg.v === est.v){ mostrarPregunta(); }
         else { qArea.appendChild(ui.el('p','text-sm text-slate-400','Cargando pregunta…')); }
+      }else if(est.fase==='defendiendo'){
+        if(config.rol==='docente'){ qArea.appendChild(ui.el('p','text-sm text-slate-400','Vista del docente')); return; }
+        if(preg && preg.v === est.v){ mostrarPregunta(); }
+        else {
+          const lista=(est&&est.asientos)?est.asientos:[]; const nom=est.espera&&lista[est.espera.asiento]?lista[est.espera.asiento].nombre:'';
+          qArea.appendChild(ui.el('p','text-sm text-slate-400','Esperando defensa de '+escFn(nom)+'…'));
+        }
       }
     }
 
-    // allow clicking zones to elegir
     mapEl.addEventListener('click',(e)=>{
+      if(config.rol==='docente') return;
       const btn = e.target.closest('.cq-zone');
       if(!btn) return;
       if(!est || est.fase!=='elegir') return;
-      const yo = () => (config.rol==='docente'?null:(NET.yo?NET.yo():null));
+      const yo = () => (NET.yo?NET.yo():null);
       if(est.espera && est.espera.asiento !== yo()) return;
       const rowsM=(est&&est.rows)||rowsM0, colsM=(est&&est.cols)||colsM0;
       const nodes = Array.from(mapEl.querySelectorAll('.cq-zone'));
