@@ -145,7 +145,7 @@
       if (typeof el !== 'number' || el < 0 || el > 3 || el % 1 !== 0) return fallo('ELECCION_INVALIDA', 'Elección inválida');
       if (!e.pendiente || !mazo) return fallo('SIN_PREGUNTA', 'No hay pregunta pendiente');
       var correcto = typeof mazo.esCorrecta === 'function' ? mazo.esCorrecta(e.pendiente.qid, el) : false;
-      ev.push({ t: 'respondida', asiento: asiento, correcto: correcto, correcta: typeof mazo.correcta === 'function' ? mazo.correcta(e.pendiente.qid) : undefined });
+      ev.push({ t: 'respondida', asiento: asiento, qid: e.pendiente.qid, correcto: correcto, correcta: typeof mazo.correcta === 'function' ? mazo.correcta(e.pendiente.qid) : undefined });
       var p = e.asientos[asiento];
       if (correcto) {
         p.streak = (p.streak || 0) + 1;

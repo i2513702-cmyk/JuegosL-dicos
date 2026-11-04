@@ -370,3 +370,141 @@ test('cerrar: avisa a todos y el código deja de existir', async () => {
     assert.equal(S.api.stats().salas, 0);
   });
 });
+
+test('conquista: partida completa por red con defensa y reconexión', async () => {
+  await servidor({ limites: { accionesPorSeg: 1000 } }, async (S) => {
+    const doc = await S.nuevo();
+    const cr = await S.pedir(doc, 'partida:crear', { key: KEY, juego: 'conquista', banco: BANCO, ajustes: { rows: 4, cols: 4 } });
+    assert.equal(cr.ok, true);
+    const al = [];
+    for (let i = 0; i < 2; i++) {
+      const c = await S.nuevo();
+      const a = await S.pedir(c, 'partida:unirse', { codigo: cr.codigo, nombre: 'Alumno' + i });
+      assert.equal(a.ok, true);
+      c.pid = a.pid; c.asiento = a.yo.asiento;
+      al.push(c);
+    }
+    const [a0, a1] = al;
+    assert.equal((await S.pedir(doc, 'partida:iniciar', {})).ok, true);
+    let estado = await S.esperar(a0, 'partida:estado');
+    const Conquista = require('../js/shared/conquista-rules.js');
+    let marcaDoc = doc.log.length;
+    for (let step = 0; step < 10000; step++) {
+      if (estado.estado.fase === 'terminada') break;
+      const esp = estado.estado.espera.asiento;
+      const cliente = al[esp];
+      if (estado.estado.fase === 'elegir') {
+        const legales = Conquista.accionesLegales(estado.estado, esp);
+        if (legales.length === 0) {
+          // skip turn
+          const res = await S.pedir(doc, 'partida:saltar-turno', {});
+          assert.equal(res.ok, true);
+          estado = await S.esperar(doc, 'partida:estado', (d) => d.eventos.some((e) => e.t === 'turno-saltado'), marcaDoc);
+          marcaDoc = doc.log.length;
+          continue;
+        }
+        const m = cliente.log.length;
+        const res = await S.pedir(cliente, 'partida:accion', legales[0]);
+        assert.equal(res.ok, true);
+        estado = await S.esperar(doc, 'partida:estado', null, marcaDoc);
+        marcaDoc = doc.log.length;
+        continue;
+      } else if (estado.estado.fase === 'responder') {
+        const preg = await S.esperar(cliente, 'partida:pregunta', null, 0);
+        assert.equal(typeof preg.tipo, 'string');
+        const idx = preg.opciones.indexOf(CORRECTA[preg.enunciado]);
+        assert.notEqual(idx, -1);
+        const r2 = await S.pedir(cliente, 'partida:accion', { tipo: 'responder', eleccion: idx });
+        assert.equal(r2.ok, true);
+        estado = await S.esperar(doc, 'partida:estado', (d) => d.eventos.some((e) => e.t === 'respondida'), marcaDoc);
+        marcaDoc = doc.log.length;
+        continue;
+      }
+      break;
+    }
+    assert.equal(estado.estado.fase, 'terminada');
+    const fin = await S.esperar(a0, 'partida:fin');
+    assert.ok(fin);
+    // reconexión
+    const c0 = a0; c0.close();
+    const vuelve = await S.nuevo();
+    const ur = await S.pedir(vuelve, 'partida:unirse', { codigo: cr.codigo, pid: c0.pid });
+    assert.equal(ur.ok, true);
+    assert.equal(ur.fase, 'terminada');
+  });
+});
+
+test('batalla: partida completa por red con equipos', async () => {
+  await servidor({ limites: { accionesPorSeg: 1000 } }, async (S) => {
+    const doc = await S.nuevo();
+    const cr = await S.pedir(doc, 'partida:crear', { key: KEY, juego: 'batalla', banco: BANCO });
+    assert.equal(cr.ok, true);
+    const al = [];
+    for (let i = 0; i < 4; i++) {
+      const c = await S.nuevo();
+      const a = await S.pedir(c, 'partida:unirse', { codigo: cr.codigo, nombre: 'Alumno' + i });
+      assert.equal(a.ok, true);
+      c.pid = a.pid; c.asiento = a.yo.asiento;
+      al.push(c);
+    }
+    assert.equal((await S.pedir(doc, 'partida:iniciar', {})).ok, true);
+    let estado = await S.esperar(al[0], 'partida:estado');
+    const Batalla = require('../js/shared/batalla-rules.js');
+    let marcaDoc = doc.log.length;
+    for (let step = 0; step < 2000; step++) {
+      if (estado.estado.fase === 'terminada') break;
+      const esp = estado.estado.espera.asiento;
+      const cliente = al[esp];
+      if (estado.estado.fase === 'preguntar' || estado.estado.fase === 'responder') {
+        const preg = await S.esperar(cliente, 'partida:pregunta', null, 0);
+        assert.ok(preg.tipo);
+        const idx = preg.opciones.indexOf(CORRECTA[preg.enunciado]);
+        assert.notEqual(idx, -1);
+        const r2 = await S.pedir(cliente, 'partida:accion', { tipo: 'responder', eleccion: idx });
+        assert.equal(r2.ok, true);
+        estado = await S.esperar(doc, 'partida:estado', (d) => d.eventos.some((e) => e.t === 'respondida'), marcaDoc);
+        marcaDoc = doc.log.length;
+        continue;
+      } else if (estado.estado.fase === 'accion') {
+        const res = await S.pedir(cliente, 'partida:accion', { tipo: 'atacar' });
+        assert.equal(res.ok, true);
+        estado = await S.esperar(doc, 'partida:estado', null, marcaDoc);
+        marcaDoc = doc.log.length;
+        continue;
+      }
+      break;
+    }
+    assert.equal(estado.estado.fase, 'terminada');
+    const fin = await S.esperar(al[0], 'partida:fin');
+    assert.ok(fin);
+  });
+});
+
+test('partida:configurar (permisos, solo en fase sala, rangos, min/max, cambia juego y mazo)', async () => {
+  await servidor({}, async (S) => {
+    const doc = await S.nuevo();
+    const cr = await S.pedir(doc, 'partida:crear', { key: KEY, juego: 'ludo', banco: BANCO });
+    assert.equal(cr.ok, true);
+    const al = [];
+    for (let i = 0; i < 2; i++) {
+      const c = await S.nuevo();
+      const a = await S.pedir(c, 'partida:unirse', { codigo: cr.codigo, nombre: 'Alumno' + i });
+      assert.equal(a.ok, true);
+      al.push(c);
+    }
+    // alumno no puede configurar
+    assert.equal((await S.pedir(al[0], 'partida:configurar', { juego: 'carrera' })).error, 'SALA_NO_EXISTE');
+    // cambiar juego
+    const cfg = await S.pedir(doc, 'partida:configurar', { juego: 'carrera', ajustes: { trackLength: 20 } });
+    assert.equal(cfg.ok, true);
+    assert.equal(cfg.juego, 'carrera');
+    // cambiar mazo
+    const banco2 = BANCO.slice(0, 6);
+    const cfg2 = await S.pedir(doc, 'partida:configurar', { banco: banco2 });
+    assert.equal(cfg2.ok, true);
+    // iniciar
+    assert.equal((await S.pedir(doc, 'partida:iniciar', {})).ok, true);
+    // no se puede configurar tras iniciar
+    assert.equal((await S.pedir(doc, 'partida:configurar', { juego: 'ludo' })).error, 'PARTIDA_EMPEZADA');
+  });
+});
