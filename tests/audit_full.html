@@ -146,15 +146,31 @@
     /* ---- juego ludo desde la sala (iniciar partida) ---- */
     /* se agrega un segundo jugador para que los modos multijugador tengan participantes */
     var studs = App.storage.getPlayers().filter(function (p) { return p.rol !== 'docente'; });
+    /* la sala necesita al menos un jugador: si faltan alumnos en los datos, se crean */
+    while (studs.length < 2) {
+      studs.push(App.storage.create('players', App.storage.defaultStudent('Alumno Prueba ' + (studs.length + 1))));
+    }
     var lobby = App.lobby.listMine(App.auth.who().id)[0];
-    if (lobby && studs[1]) App.storage.update('lobbies', lobby.id, { jugadores: [studs[1].id] });
+    if (lobby) App.storage.update('lobbies', lobby.id, { jugadores: [studs[1].id] });
     await wait(400);
     /* volvemos a la vista para repintar la sala con su jugador */
     App.go('inicio'); await wait(120);
     var start = btn('▶ Iniciar partida');
-    var started = false;
-    if (start) { start.click(); await wait(500); started = !!$('#app') && $('#app').children.length > 2; }
-    step(!!start && started, 'iniciar partida ludo desde la sala del docente');
+    var started = false, kids = 0, estado = '?';
+    if (start) {
+      start.click(); await wait(500);
+      kids = $('#app') ? $('#app').children.length : 0;
+      var lobDespues = lobby ? App.storage.getById('lobbies', lobby.id) : null;
+      estado = lobDespues ? lobDespues.estado : '?';
+      /* la sala pasa a "jugando" y el juego se pinta (hijos de #app o la escena del juego) */
+      started = estado === 'jugando' && (kids > 2 || !!$('#app .escena, #app .l-board-frame'));
+    }
+    var toastsAhora = $$('.toast');
+    var lobDiag = lobby ? App.storage.getById('lobbies', lobby.id) : null;
+    step(!!start && started, 'iniciar partida ludo desde la sala del docente' +
+      (started ? '' : ' [boton=' + !!start + ', jugadores=' + (lobDiag ? lobDiag.jugadores.length : '?') +
+        ', estado=' + estado + ', hijos#app=' + kids +
+        ', ultimo aviso=' + (toastsAhora.length ? toastsAhora[toastsAhora.length - 1].textContent : 'ninguno') + ']'));
 
     /* ---- panel docente: pestaña preguntas ---- */
     var navDoc = btn('Panel docente');
@@ -332,6 +348,11 @@
         var gh = document.getElementById('gamehost');
         gh.innerHTML = '';           /* una partida a la vez: sin escenas viejas */
         gh.appendChild(host);
+        /* las habilidades se gastan al usarse: se repone el stock de curacion para no agotarlo en las pruebas */
+        players.slice(0, docNeed[mode]).forEach(function (pl) {
+          var fresh = App.storage.getById('players', pl.id) || pl;
+          App.storage.update('players', pl.id, { skills: Object.assign({}, fresh.skills || {}, { cura: 40 }) });
+        });
         App.launchGame({
           container: host,
           mode: mode,
@@ -473,7 +494,7 @@
                 var animado = boxTras.className.indexOf('ba-hpbox-heal') !== -1;
                 var despues = boxTras.querySelector('.ba-hpbox-pct').textContent;
                 step(animado || parseInt(despues, 10) > parseInt(antes, 10),
-                  'juego batalla: la curacion se aplica y anima la barra (' + antes + '% -> ' + despues + '%)');
+                  'juego batalla: la curacion se aplica y anima la barra (' + antes + ' -> ' + despues + ')');
               }
 
               /* la curacion tiene que recuperar vida real: se provoca un dano

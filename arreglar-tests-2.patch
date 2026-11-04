@@ -1,0 +1,29 @@
+diff --git a/tests/audit_full.html b/tests/audit_full.html
+index 879dcc3..c61daae 100644
+--- a/tests/audit_full.html
++++ b/tests/audit_full.html
+@@ -156,10 +156,21 @@
+     /* volvemos a la vista para repintar la sala con su jugador */
+     App.go('inicio'); await wait(120);
+     var start = btn('▶ Iniciar partida');
+-    var started = false;
+-    if (start) { start.click(); await wait(500); started = !!$('#app') && $('#app').children.length > 2; }
++    var started = false, kids = 0, estado = '?';
++    if (start) {
++      start.click(); await wait(500);
++      kids = $('#app') ? $('#app').children.length : 0;
++      var lobDespues = lobby ? App.storage.getById('lobbies', lobby.id) : null;
++      estado = lobDespues ? lobDespues.estado : '?';
++      /* la sala pasa a "jugando" y el juego se pinta (hijos de #app o la escena del juego) */
++      started = estado === 'jugando' && (kids > 2 || !!$('#app .escena, #app .l-board-frame'));
++    }
++    var toastsAhora = $$('.toast');
++    var lobDiag = lobby ? App.storage.getById('lobbies', lobby.id) : null;
+     step(!!start && started, 'iniciar partida ludo desde la sala del docente' +
+-      (started ? '' : ' [motivo: ' + ((document.querySelector('.toast') || {}).textContent || 'sin aviso') + ']'));
++      (started ? '' : ' [boton=' + !!start + ', jugadores=' + (lobDiag ? lobDiag.jugadores.length : '?') +
++        ', estado=' + estado + ', hijos#app=' + kids +
++        ', ultimo aviso=' + (toastsAhora.length ? toastsAhora[toastsAhora.length - 1].textContent : 'ninguno') + ']'));
+ 
+     /* ---- panel docente: pestaña preguntas ---- */
+     var navDoc = btn('Panel docente');
