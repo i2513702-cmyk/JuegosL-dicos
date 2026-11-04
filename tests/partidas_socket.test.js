@@ -90,7 +90,7 @@ test('crear: clave, juego, banco y validaciones', async () => {
   await servidor({}, async (S) => {
     const d = await S.nuevo();
     assert.equal((await S.pedir(d, 'partida:crear', { key: 'mala', juego: 'ludo', banco: BANCO })).error, 'CLAVE_INCORRECTA');
-    assert.equal((await S.pedir(d, 'partida:crear', { key: KEY, juego: 'carrera', banco: BANCO })).error, 'JUEGO_DESCONOCIDO');
+    assert.equal((await S.pedir(d, 'partida:crear', { key: KEY, juego: 'monopoly', banco: BANCO })).error, 'JUEGO_DESCONOCIDO');
     assert.equal((await S.pedir(d, 'partida:crear', { key: KEY, juego: '__proto__', banco: BANCO })).error, 'JUEGO_DESCONOCIDO');
     assert.equal((await S.pedir(d, 'partida:crear', { key: KEY, juego: 'ludo', banco: [] })).error, 'SIN_PREGUNTAS');
     assert.equal((await S.pedir(d, 'partida:crear', { key: KEY, juego: 'ludo', banco: [{ enunciado: 'x' }] })).error, 'SIN_PREGUNTAS');
