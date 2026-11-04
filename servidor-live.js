@@ -77,6 +77,8 @@ const server = http.createServer((req, res) => {
   });
 });
 const io = new Server(server, { cors: { origin: '*' }, pingInterval: 10000, pingTimeout: 20000, maxHttpBufferSize: 3e6, perMessageDeflate: { threshold: 1024 } });
+/* partidas en red: el servidor lleva el estado del juego (Ludo) */
+require('./servidor/partidas').attach(io, { HOST_KEY });
 
 const rooms = new Map();
 const rid = () => Math.random().toString(36).slice(2, 10);

@@ -1,0 +1,412 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>LudoApp · Ludo en red</title>
+<style>
+:root{--ink:#fff;--mut:#c4b8f0;--card:rgba(255,255,255,.1);--purple:#7c3aed;--r:#e21b3c;--b:#1368ce;--y:#d89e00;--g:#26890c}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{min-height:100%;overflow-x:hidden}
+body{font-family:"Segoe UI",system-ui,Roboto,sans-serif;color:var(--ink);background:#150833}
+.bg{position:fixed;inset:0;z-index:-1;background:linear-gradient(135deg,#46178f,#1b0b42 50%,#0f2a6b,#46178f);background-size:300% 300%;animation:bg 18s ease infinite}
+@keyframes bg{50%{background-position:100% 100%}}
+#root{max-width:1100px;margin:0 auto;padding:16px;display:flex;flex-direction:column;gap:14px}
+.top{display:flex;justify-content:space-between;align-items:center;font-weight:900}
+.top a{color:var(--mut);text-decoration:none;font-weight:700}
+.mut{color:var(--mut)}
+.card{background:var(--card);border-radius:18px;padding:18px;display:flex;flex-direction:column;gap:10px}
+.center{text-align:center;align-items:center}
+h1,h2,h3{font-weight:900}
+input,select{width:100%;padding:12px 14px;border-radius:12px;border:2px solid rgba(255,255,255,.2);background:rgba(0,0,0,.3);color:#fff;font-size:1rem}
+input::placeholder{color:#a99bd6}
+select option{color:#000}
+.btn{background:var(--purple);color:#fff;border:0;border-radius:14px;padding:14px 18px;font-size:1.05rem;font-weight:900;cursor:pointer;box-shadow:0 5px 0 rgba(0,0,0,.3)}
+.btn:active{transform:translateY(3px);box-shadow:0 2px 0 rgba(0,0,0,.3)}
+.btn:disabled{opacity:.45;cursor:not-allowed}
+.btn.alt{background:var(--b)}.btn.ghost{background:rgba(255,255,255,.14)}
+.err{color:#ffb3b3;font-weight:800;min-height:1.2em}
+.pin{font-size:4rem;font-weight:900;letter-spacing:.3em;background:#fff;color:#1b0b42;border-radius:16px;padding:6px 8px 6px 20px}
+.grid2{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.avs{display:grid;grid-template-columns:repeat(8,1fr);gap:6px}
+.av{font-size:1.5rem;padding:6px 0;border-radius:10px;border:2px solid transparent;background:rgba(255,255,255,.1);cursor:pointer}
+.av.on{border-color:#ffc800;background:rgba(255,200,0,.25)}
+.pl-row{display:flex;align-items:center;gap:8px;background:rgba(255,255,255,.08);border-radius:10px;padding:8px 10px}
+.pl-row.turno{outline:3px solid #ffc800;background:rgba(255,200,0,.18)}
+.pl-row .pos{margin-left:auto;color:var(--mut);font-size:.9rem}
+.pl-row .x{margin-left:auto;background:#e21b3c;color:#fff;border:0;border-radius:8px;padding:2px 8px;cursor:pointer}
+.dot{width:14px;height:14px;border-radius:99px;display:inline-block}
+.dot.rojo{background:#dc2626}.dot.verde{background:#059669}.dot.azul{background:#2563eb}.dot.amarillo{background:#d97706}
+.gwrap{display:grid;grid-template-columns:minmax(300px,520px) 1fr;gap:14px;align-items:start}
+.side{display:flex;flex-direction:column;gap:12px}
+.q{font-size:1.2rem;font-weight:800}
+.opts{display:grid;grid-template-columns:1fr 1fr;gap:10px}
+.opt{display:flex;gap:10px;align-items:center;color:#fff;border:0;border-radius:12px;padding:14px;font-size:1rem;font-weight:800;cursor:pointer;text-align:left;box-shadow:0 4px 0 rgba(0,0,0,.3)}
+.opt:disabled{opacity:.55;cursor:default}
+.o0{background:var(--r)}.o1{background:var(--b)}.o2{background:var(--y)}.o3{background:var(--g)}
+.dado{font-size:2.4rem;font-weight:900}
+.log{display:flex;flex-direction:column;gap:4px;font-size:.95rem}
+.toast{position:fixed;left:50%;bottom:24px;transform:translateX(-50%);background:#000c;color:#fff;padding:10px 18px;border-radius:12px;font-weight:800;z-index:50}
+@media(max-width:760px){.gwrap,.grid2{grid-template-columns:1fr}.pin{font-size:3rem}.avs{grid-template-columns:repeat(8,1fr)}.opts{grid-template-columns:1fr}}
+
+/* tablero (mismo aspecto que el Ludo local: css/styles.css) */
+.l-board-frame{position:relative;max-width:520px;width:100%;margin:0 auto;border-radius:24px;padding:8px;background:linear-gradient(160deg,#1e293b,#0f172a);box-shadow:0 16px 36px rgba(0,0,0,.35),inset 0 0 0 2px #475569}
+.ludo-grid{display:grid;grid-template-columns:repeat(15,1fr);grid-template-rows:repeat(15,1fr);gap:2px;aspect-ratio:1;width:100%;background:#0f172a;border-radius:16px;overflow:hidden;box-shadow:inset 0 0 0 2px #334155}
+.l-cell{position:relative;display:flex;align-items:center;justify-content:center;background:#f1f5f9;border:1px solid #cbd5e1}
+.l-empty{background:repeating-linear-gradient(45deg,#f8fafc,#f8fafc 6px,#eef2f7 6px,#eef2f7 12px)}
+.l-meta{background:radial-gradient(circle at 40% 30%,#fff7d6,#f59e0b);font-size:1.1rem;border:2px solid #b45309}
+.l-sp{font-size:clamp(7px,2vw,12px)}
+.l-yard{width:52%;height:52%;border-radius:999px;background:rgba(255,255,255,.9);box-shadow:inset 0 0 0 3px rgba(15,23,42,.18)}
+.l-base-rojo{background:#fda4af}.l-home-rojo{background:#dc2626}
+.l-base-verde{background:#6ee7b7}.l-home-verde{background:#059669}
+.l-base-azul{background:#93c5fd}.l-home-azul{background:#2563eb}
+.l-base-amarillo{background:#fcd34d}.l-home-amarillo{background:#d97706}
+.ludo-tokens{position:absolute;top:8px;left:8px;right:8px;bottom:8px;pointer-events:none;z-index:20}
+.l-token{position:absolute;width:7.4%;height:7.4%;border-radius:999px;transform:translate(-50%,-50%);border:3px solid #fff;display:flex;align-items:center;justify-content:center;box-shadow:0 0 0 2px rgba(15,23,42,.55),0 4px 9px rgba(15,23,42,.45);transition:left .25s,top .25s}
+.l-token-rojo{background:radial-gradient(circle at 40% 32%,#fb7185,#dc2626 70%)}
+.l-token-verde{background:radial-gradient(circle at 40% 32%,#34d399,#059669 70%)}
+.l-token-azul{background:radial-gradient(circle at 40% 32%,#60a5fa,#2563eb 70%)}
+.l-token-amarillo{background:radial-gradient(circle at 40% 32%,#fbbf24,#d97706 70%)}
+</style>
+</head>
+<body>
+<div class="bg"></div>
+<div id="root"></div>
+<script src="/socket.io/socket.io.js"></script>
+<script src="js/core/data.js"></script>
+<script src="js/core/storage.js"></script>
+<script src="js/shared/ludo-rules.js"></script>
+<script>
+(function () {
+'use strict';
+const R = App.rules.ludo;
+const EMO = ['🐱','🐶','🤖','🐼','🦊','👽','👻','🐉','🦉','🦄','🥷','👨‍🚀','🧙','🐸','🐥','💀'];
+const SH = ['▲','◆','●','■'];
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s == null ? '' : s).replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+const emo = (i) => EMO[(+i || 0) % EMO.length];
+const root = $('#root');
+const socket = io();
+
+const S = { rol: null, codigo: null, token: null, yo: null, sala: null, est: null, preg: null,
+  fin: null, registro: null, log: [], off: 0, turnoVence: null, partidaVence: null, armado: false };
+
+/* ---------- utilidades de pantalla ---------- */
+function page(inner) {
+  S.armado = false;
+  root.innerHTML = '<div class="top"><div>🎓 LudoApp <span class="mut">· Ludo en red</span></div><a href="index.html">← Inicio</a></div>' + inner;
+}
+function toast(msg) {
+  const t = document.createElement('div'); t.className = 'toast'; t.textContent = msg;
+  document.body.appendChild(t); setTimeout(() => t.remove(), 2600);
+}
+const nom = (a) => (S.sala && S.sala.jugadores[a] ? S.sala.jugadores[a].nombre : 'Jugador ' + (a + 1));
+const fmt = (s) => Math.floor(s / 60) + ':' + String(s % 60).padStart(2, '0');
+function olvidar() { sessionStorage.removeItem('partida_docente'); localStorage.removeItem('partida_alumno'); }
+function inicio() { olvidar(); location.href = location.pathname; }
+
+/* ---------- inicio ---------- */
+function home(msg) {
+  const sala = (new URLSearchParams(location.search).get('sala') || '').toUpperCase().slice(0, 4);
+  let av = 0;
+  page(`
+    <div class="grid2">
+      <div class="card">
+        <h2>🎮 Entrar a una sala</h2>
+        <input id="cod" maxlength="4" placeholder="CÓDIGO (4 letras)" value="${esc(sala)}" autocapitalize="characters" autocomplete="off">
+        <input id="nom" maxlength="14" placeholder="Tu nombre">
+        <div class="avs" id="avs">${EMO.map((e, i) => `<button class="av${i === 0 ? ' on' : ''}" data-i="${i}">${e}</button>`).join('')}</div>
+        <p class="err" id="err">${esc(msg || '')}</p>
+        <button class="btn" id="go">Entrar</button>
+      </div>
+      <div class="card">
+        <h2>👩‍🏫 Soy docente</h2>
+        <p class="mut">Crea una sala, comparte el código y mira jugar a tu grupo. Las preguntas salen de tu baraja.</p>
+        <button class="btn alt" id="doc">Crear una sala</button>
+      </div>
+    </div>`);
+  $('#avs').onclick = (e) => {
+    const b = e.target.closest('.av'); if (!b) return;
+    av = +b.dataset.i;
+    document.querySelectorAll('.av').forEach((x) => x.classList.toggle('on', x === b));
+  };
+  $('#go').onclick = () => {
+    socket.emit('partida:unirse', { codigo: $('#cod').value, nombre: $('#nom').value, avatar: av }, (r) => {
+      if (!r || !r.ok) return ($('#err').textContent = (r && (r.mensaje || r.error)) || 'No se pudo entrar');
+      entrar(r);
+    });
+  };
+  $('#doc').onclick = configurar;
+}
+
+function entrar(r) {
+  S.rol = 'alumno'; S.codigo = r.codigo; S.yo = r.yo.asiento;
+  localStorage.setItem('partida_alumno', JSON.stringify({ codigo: r.codigo, pid: r.pid }));
+  pintar();
+}
+
+/* ---------- docente: configurar y crear ---------- */
+function banco() {
+  const c = {}; let q;
+  try { q = App.storage.getQuestions(); App.storage.getCategories().forEach((x) => { c[x.id] = x.nombre; }); }
+  catch (e) { q = App.seedData.questions; App.seedData.categories.forEach((x) => { c[x.id] = x.nombre; }); }
+  return { q: q, c: c };
+}
+function configurar() {
+  const b = banco();
+  page(`
+    <div class="card" style="max-width:640px;width:100%;margin:auto">
+      <h2>Configurar partida de Ludo</h2>
+      <input id="key" type="password" placeholder="Clave de docente (si el servidor la pide)">
+      <select id="cat"><option value="">Todas las categorías (${b.q.length} preguntas)</option>${Object.keys(b.c).map((k) => `<option value="${esc(k)}">${esc(b.c[k])}</option>`).join('')}</select>
+      <select id="n"><option value="20">20 preguntas</option><option value="30" selected>30 preguntas</option><option value="60">60 preguntas</option><option value="100">100 preguntas</option></select>
+      <select id="t"><option value="0">Sin límite por turno</option><option value="30">30 s por turno</option><option value="60">60 s por turno</option><option value="90" selected>90 s por turno</option></select>
+      <select id="m"><option value="0" selected>Sin límite de tiempo total</option><option value="10">10 min en total</option><option value="20">20 min en total</option><option value="30">30 min en total</option></select>
+      <p class="err" id="err"></p>
+      <button class="btn" id="mk">Crear sala</button>
+      <button class="btn ghost" id="vo">Volver</button>
+    </div>`);
+  $('#vo').onclick = () => home();
+  $('#mk').onclick = () => {
+    const cat = $('#cat').value;
+    const q = b.q.filter((x) => !cat || x.category_id === cat).sort(() => Math.random() - 0.5).slice(0, +$('#n').value)
+      .map((x) => ({ id: x.id, enunciado: x.enunciado, opciones: x.opciones, respuesta_correcta: x.respuesta_correcta,
+        categoria: b.c[x.category_id] || '', difficulty_id: x.difficulty_id }));
+    socket.emit('partida:crear', { key: $('#key').value, juego: 'ludo', banco: q, turnoSeg: +$('#t').value, tiempoSeg: (+$('#m').value) * 60 }, (r) => {
+      if (!r || !r.ok) return ($('#err').textContent = (r && (r.mensaje || r.error)) || 'No se pudo crear');
+      S.rol = 'docente'; S.codigo = r.codigo; S.token = r.token;
+      S.sala = { codigo: r.codigo, juego: 'ludo', fase: 'sala', min: r.min, max: r.max, jugadores: [] };
+      sessionStorage.setItem('partida_docente', JSON.stringify({ codigo: r.codigo, token: r.token }));
+      pintar();
+    });
+  };
+}
+
+/* ---------- sala de espera ---------- */
+function lobby() {
+  const s = S.sala, doc = S.rol === 'docente';
+  const url = location.origin + location.pathname + '?sala=' + S.codigo;
+  page(`
+    <div class="grid2">
+      <div class="card center">
+        <p class="mut">Entra a <b>${esc(location.host)}/partida.html</b> con el código</p>
+        <div class="pin">${esc(S.codigo)}</div>
+        <p class="mut" style="word-break:break-all">${esc(url)}</p>
+        ${doc
+          ? `<button class="btn" id="ini" ${s.jugadores.length >= s.min ? '' : 'disabled'}>▶ Empezar (${s.jugadores.length}/${s.max})</button>
+             <button class="btn ghost" id="cer">Cerrar sala</button>`
+          : '<p class="mut">Esperando a que el docente empiece…</p><button class="btn ghost" id="sal">Salir</button>'}
+      </div>
+      <div class="card">
+        <h2>Jugadores (${s.jugadores.length})</h2>
+        ${s.jugadores.map((j) => `<div class="pl-row"><span class="dot ${j.color}"></span>${emo(j.avatar)} <b>${esc(j.nombre)}</b>${j.online ? '' : ' <i class="mut">(desconectado)</i>'}${doc ? `<button class="x" data-a="${j.asiento}">✖</button>` : ''}</div>`).join('') || '<p class="mut">Nadie todavía…</p>'}
+      </div>
+    </div>`);
+  if (doc) {
+    $('#ini').onclick = () => socket.emit('partida:iniciar', {}, (r) => { if (r && !r.ok) toast(r.mensaje || r.error); });
+    $('#cer').onclick = cerrar;
+    root.onclick = (e) => {
+      const x = e.target.closest('.x'); if (!x) return;
+      socket.emit('partida:expulsar', { asiento: +x.dataset.a }, (r) => { if (r && !r.ok) toast(r.mensaje || r.error); });
+    };
+  } else {
+    $('#sal').onclick = () => socket.emit('partida:salir', {}, inicio);
+  }
+}
+function cerrar() {
+  if (!confirm('¿Cerrar la sala? Se acaba la partida para todos.')) return;
+  socket.emit('partida:cerrar', {}, inicio);
+}
+
+/* ---------- tablero ---------- */
+function boardHTML(n) {
+  const T = R.TABLERO, pathIdx = {}, homeIdx = {};
+  T.PATH.forEach((c, i) => { pathIdx[c[0] + '-' + c[1]] = i; });
+  T.HOME_STRETCH.forEach((lane, pi) => lane.forEach((c) => { homeIdx[c[0] + '-' + c[1]] = pi; }));
+  let h = '';
+  for (let r = 0; r < T.N; r++) {
+    for (let c = 0; c < T.N; c++) {
+      const key = r + '-' + c; let owner = -1;
+      T.BASE_ORIGIN.forEach((o, pi) => { if (r >= o[0] && r <= o[0] + 5 && c >= o[1] && c <= o[1] + 5) owner = pi; });
+      let cls = 'l-cell', inner = '';
+      if (owner !== -1 && owner < n) {
+        cls += ' l-base l-base-' + R.COLORES[owner];
+        if (T.YARD_SLOTS.some((s) => T.BASE_ORIGIN[owner][0] + s[0] === r && T.BASE_ORIGIN[owner][1] + s[1] === c)) inner = '<span class="l-yard"></span>';
+      } else if (owner !== -1) cls += ' l-empty';
+      else if (key === '7-7') { cls += ' l-meta'; inner = '<span>🏆</span>'; }
+      else if (homeIdx[key] !== undefined) cls += homeIdx[key] < n ? ' l-home l-home-' + R.COLORES[homeIdx[key]] : ' l-empty';
+      else if (pathIdx[key] !== undefined) {
+        const g = pathIdx[key];
+        if (T.SAFE[g]) inner = '<span class="l-sp">⭐</span>';
+        else if (T.RETO[g]) inner = '<span class="l-sp">❓</span>';
+        else if (T.AVANCE[g]) inner = '<span class="l-sp">⬆</span>';
+        else if (T.RETRO[g]) inner = '<span class="l-sp">⏪</span>';
+      } else cls += ' l-empty';
+      h += `<div class="${cls}">${inner}</div>`;
+    }
+  }
+  return h;
+}
+function ponerFichas() {
+  const grid = $('#grid'); if (!grid || !S.est) return;
+  const W = grid.clientWidth; if (!W) return;
+  const s = (W - 28) / 15, N = S.est.asientos.length;
+  const celdas = S.est.asientos.map((a, i) => R.celdaDe(i, a.pos, 0));
+  S.est.asientos.forEach((a, i) => {
+    const el = $('#tk' + i); if (!el) return;
+    const rc = celdas[i];
+    const juntas = celdas.some((o, k) => k !== i && o[0] === rc[0] && o[1] === rc[1]) && a.pos >= 0;
+    const dx = juntas ? (i - (N - 1) / 2) * 5 : 0;
+    el.style.left = 'calc(' + ((rc[1] * (s + 2) + s / 2) / W * 100) + '% + ' + dx + 'px)';
+    el.style.top = ((rc[0] * (s + 2) + s / 2) / W * 100) + '%';
+    el.style.fontSize = Math.round(W * 0.074 * 0.58) + 'px';
+  });
+}
+
+/* ---------- partida ---------- */
+function juego() {
+  const e = S.est, n = e.asientos.length;
+  if (!S.armado) {
+    page(`
+      <div class="gwrap">
+        <div class="l-board-frame"><div class="ludo-grid" id="grid">${boardHTML(n)}</div>
+          <div class="ludo-tokens">${e.asientos.map((a, i) => `<div class="l-token l-token-${a.color}" id="tk${i}">${emo(a.avatar)}</div>`).join('')}</div></div>
+        <div class="side">
+          <div class="card" id="hd"></div><div class="card" id="act"></div>
+          <div class="card" id="pl"></div><div class="card" id="lg"></div>
+        </div>
+      </div>`);
+    S.armado = true;
+  }
+  const doc = S.rol === 'docente', esp = e.espera, mia = !doc && esp && esp.asiento === S.yo;
+
+  $('#hd').innerHTML = `<div class="mut">Sala <b>${esc(S.codigo)}</b>${doc ? ' · vista del docente' : ''}</div>
+    <div id="tm"></div>
+    <div><b>${esp ? emo(e.asientos[esp.asiento].avatar) + ' ' + esc(nom(esp.asiento)) : ''}</b>${mia ? ' · <b>¡es tu turno!</b>' : ''}</div>`;
+
+  let act = '';
+  const pr = S.preg && S.preg.v === e.v ? S.preg : null;
+  if (e.fase === 'tirar') {
+    act = mia ? '<button class="btn" id="tirar">🎲 Tirar el dado</button>'
+      : `<p class="mut">Turno de <b>${esc(nom(esp.asiento))}</b>: va a tirar el dado…</p>`;
+  } else if (e.fase === 'responder') {
+    const reto = e.pendiente && e.pendiente.tipo === 'reto';
+    act = (e.dado ? `<div class="dado">🎲 ${e.dado}</div>` : '') + (reto ? '<p><b>❓ ¡Reto!</b> Pregunta extra: acierta y avanzas 2 casillas más.</p>' : '');
+    if (pr) {
+      act += `<div class="mut">${esc(pr.categoria || '')}${pr.dificultad ? ' · ' + esc(pr.dificultad) : ''}</div><div class="q">${esc(pr.enunciado)}</div>
+        <div class="opts">${pr.opciones.map((o, i) => `<button class="opt o${i % 4}" data-i="${i}" ${mia ? '' : 'disabled'}><span>${SH[i % 4]}</span>${esc(o)}</button>`).join('')}</div>`;
+      if (!mia) act += `<p class="mut">${esc(nom(esp.asiento))} está respondiendo…</p>`;
+    } else act += mia || doc ? '<p class="mut">Cargando pregunta…</p>' : `<p class="mut">${esc(nom(esp.asiento))} está respondiendo…</p>`;
+  }
+  if (doc) act += '<button class="btn alt" id="sal">⏭ Saltar turno</button><button class="btn ghost" id="cer">Cerrar sala</button>';
+  $('#act').innerHTML = act;
+
+  $('#pl').innerHTML = '<h3>Jugadores</h3>' + e.asientos.map((a, i) => {
+    const j = S.sala && S.sala.jugadores[i];
+    return `<div class="pl-row${esp && esp.asiento === i ? ' turno' : ''}"><span class="dot ${a.color}"></span>${emo(a.avatar)} <b>${esc(a.nombre)}</b>${i === S.yo && !doc ? ' (tú)' : ''}${j && !j.online ? ' <i class="mut">(desconectado)</i>' : ''}<span class="pos">${a.pos < 0 ? 'en la base' : a.pos >= R.TABLERO.META ? '🏁 meta' : 'casilla ' + a.pos + '/' + R.TABLERO.META}</span></div>`;
+  }).join('');
+  $('#lg').innerHTML = '<h3>Lo último</h3><div class="log">' + (S.log.map((l) => '<div>' + esc(l) + '</div>').join('') || '<span class="mut">Todavía nada…</span>') + '</div>';
+
+  const t = $('#tirar'); if (t) t.onclick = () => { t.disabled = true; enviar({ tipo: 'tirar' }); };
+  document.querySelectorAll('.opt').forEach((b) => { b.onclick = () => {
+    document.querySelectorAll('.opt').forEach((x) => { x.disabled = true; });
+    enviar({ tipo: 'responder', eleccion: +b.dataset.i });
+  }; });
+  const sk = $('#sal'); if (sk) sk.onclick = () => socket.emit('partida:saltar-turno', {}, (r) => { if (r && !r.ok) toast(r.mensaje || r.error); });
+  const ce = $('#cer'); if (ce) ce.onclick = cerrar;
+  ponerFichas(); tick();
+}
+function enviar(a) { socket.emit('partida:accion', a, (r) => { if (r && !r.ok) { toast(r.mensaje || r.error); pintar(); } }); }
+
+function tick() {
+  const el = $('#tm'); if (!el) return;
+  const now = Date.now() + S.off, p = [];
+  if (S.turnoVence) p.push('⏱ Turno: ' + Math.max(0, Math.ceil((S.turnoVence - now) / 1000)) + ' s');
+  if (S.partidaVence) p.push('🏁 Partida: ' + fmt(Math.max(0, Math.ceil((S.partidaVence - now) / 1000))));
+  el.textContent = p.join('  ·  ');
+}
+setInterval(tick, 250);
+window.addEventListener('resize', ponerFichas);
+
+/* ---------- final ---------- */
+function final() {
+  const f = S.fin, doc = S.rol === 'docente', reg = S.registro;
+  const g = f.clasificacion.find((c) => c.asiento === f.ganador);
+  const av = (a) => (S.sala && S.sala.jugadores[a] ? emo(S.sala.jugadores[a].avatar) : '');
+  page(`
+    <div class="card center" style="max-width:560px;width:100%;margin:auto">
+      <h1>🏆 ${g ? esc(g.nombre) : ''}</h1>
+      <p class="mut">${f.motivo === 'meta' ? 'llegó primero a la meta' : 'iba más adelantado cuando se acabó el tiempo'}</p>
+      ${!doc && S.yo === f.ganador ? '<h2>¡Ganaste!</h2>' : ''}
+      ${f.clasificacion.map((c, k) => `<div class="pl-row" style="width:100%"><b>${k + 1}.</b><span class="dot ${c.color}"></span>${av(c.asiento)} <b>${esc(c.nombre)}</b><span class="pos">${c.llego ? '🏁 meta' : c.pos < 0 ? 'en la base' : 'casilla ' + c.pos}</span></div>`).join('')}
+      ${reg ? `<p>Respondiste bien <b>${reg.respuestas.filter((r) => r.correcto).length}</b> de <b>${reg.respuestas.length}</b> preguntas.</p>` : ''}
+      ${doc ? '<button class="btn ghost" id="cer">Cerrar sala</button>' : ''}
+      <button class="btn" id="ini">Volver al inicio</button>
+    </div>`);
+  $('#ini').onclick = inicio;
+  if (doc) $('#cer').onclick = () => socket.emit('partida:cerrar', {}, inicio);
+}
+
+/* ---------- dispatcher ---------- */
+function pintar() {
+  if (S.fin && S.est && S.est.fase === 'terminada') return final();
+  if (S.est) return juego();
+  if (S.sala && S.sala.fase === 'sala') return lobby();
+  if (S.rol === 'alumno' && !S.sala) return lobby0();
+  page('<div class="card center">Cargando partida…</div>');
+}
+/* alumno recién unido: la primera partida:sala llega justo después del ack */
+function lobby0() { page('<div class="card center">Entrando a la sala…</div>'); }
+
+/* ---------- eventos del servidor ---------- */
+function registrar(evs) {
+  (evs || []).forEach((ev) => {
+    let t = null;
+    if (ev.t === 'dado') t = '🎲 ' + nom(ev.asiento) + ' sacó ' + ev.valor;
+    else if (ev.t === 'respondida') t = (ev.correcto ? '✅ ' : '❌ ') + nom(ev.asiento) + (ev.correcto ? ' acertó' : ' falló');
+    else if (ev.t === 'especial') t = ev.tipo === 'avance' ? '⬆ ' + nom(ev.asiento) + ' cae en avance (+2)' : ev.tipo === 'retroceso' ? '⏪ ' + nom(ev.asiento) + ' retrocede 2' : '❓ ' + nom(ev.asiento) + ' cae en un reto';
+    else if (ev.t === 'turno-saltado') t = '⏭ Turno de ' + nom(ev.asiento) + ' saltado (' + ({ tiempo: 'se acabó el tiempo', desconexion: 'desconectado', docente: 'lo saltó el docente' }[ev.motivo] || ev.motivo) + ')';
+    if (t) S.log.unshift(t);
+  });
+  S.log = S.log.slice(0, 6);
+}
+function aplicarEstado(p) {
+  S.off = (p.ahora || Date.now()) - Date.now();
+  S.est = p.estado; S.turnoVence = p.turnoVence; S.partidaVence = p.partidaVence;
+  registrar(p.eventos);
+}
+socket.on('partida:sala', (s) => { S.sala = s; pintar(); });
+socket.on('partida:estado', (p) => { aplicarEstado(p); pintar(); });
+socket.on('partida:pregunta', (q) => { S.preg = q; if (S.est) pintar(); });
+socket.on('partida:fin', (f) => { S.fin = f; pintar(); });
+socket.on('partida:registro', (r) => { S.registro = r; pintar(); });
+socket.on('partida:expulsado', () => { alert('El docente te sacó de la sala'); inicio(); });
+socket.on('partida:cerrada', () => { alert('El docente cerró la sala'); inicio(); });
+
+/* ---------- conexión y reconexión ---------- */
+function reanudar() {
+  const h = JSON.parse(sessionStorage.getItem('partida_docente') || 'null');
+  const a = JSON.parse(localStorage.getItem('partida_alumno') || 'null');
+  if (h) {
+    return socket.emit('partida:docente-volver', { codigo: h.codigo, token: h.token }, (r) => {
+      if (!r || !r.ok) { sessionStorage.removeItem('partida_docente'); return S.rol ? inicio() : home(); }
+      S.rol = 'docente'; S.codigo = h.codigo; S.token = h.token; S.sala = r.sala;
+      if (r.estado) aplicarEstado(r.estado);
+      if (r.fin) S.fin = r.fin;
+      pintar();
+    });
+  }
+  if (a) {
+    return socket.emit('partida:unirse', { codigo: a.codigo, pid: a.pid }, (r) => {
+      if (!r || !r.ok) { localStorage.removeItem('partida_alumno'); return S.rol ? inicio() : home('Esa sala ya no existe'); }
+      entrar(r);
+    });
+  }
+  if (!S.rol) home();
+}
+page('<div class="card center">Conectando…</div>');
+socket.on('connect', reanudar);
+})();
+</script>
+</body>
+</html>
