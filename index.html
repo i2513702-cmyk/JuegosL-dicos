@@ -34,6 +34,8 @@
       <nav id="main-nav" class="nav-tabs"></nav>
       <div id="user-bar" class="nav-tabs"></div>
       <a class="live-link" href="live.html" title="Partida en vivo estilo Kahoot">🔴 En vivo</a>
+      <button id="share-btn" class="btn-ghost text-sm" title="Entrar con el código del docente">📡 Docente</button>
+      <a class="btn-ghost text-sm" href="ver.html" title="Solo docentes: ver las partidas de los grupos en vivo" style="text-decoration:none">👁️ Observar</a>
       <button id="sound-btn" class="btn-ghost text-sm" title="Activar o silenciar sonidos">🔊</button>
     </div>
   </header>
@@ -45,6 +47,7 @@
   </footer>
 
   <div id="toast-root" class="toast-root"></div>
+  <script src="/socket.io/socket.io.js"></script>
   <script src="js/core/data.js"></script>
   <script src="js/core/storage.js"></script>
   <script src="js/core/questionEngine.js"></script>
@@ -61,6 +64,8 @@
   <script src="js/admin.js"></script>
   <script src="js/auth.js"></script>
   <script src="js/core/sync.js"></script>
+  <script src="js/core/share.js"></script>
+  <script src="js/grupo.js"></script>
   <script>
     // Initialize floating background particles (like live.html)
     (function(){
@@ -77,6 +82,7 @@
       var on = App.ui.toggleSound();
       this.textContent = on ? '🔊' : '🔇';
     });
+    if (App.share) App.share.bind(document.getElementById('share-btn'));
     var boot = function () { App.boot(); };
     if (App.sync && App.sync.init) App.sync.init().then(boot);
     else boot();

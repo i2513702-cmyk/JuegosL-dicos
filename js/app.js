@@ -107,7 +107,7 @@ App.roam = (function () {
   function sectionInicio(container) {
     const user = App.auth.who();
     if (user && user.rol === 'docente') sectionSalaDocente(container);
-    else sectionUnirse(container);
+    else { sectionUnirse(container); if (App.grupo) App.grupo.mount(container); }
   }
 
   function configSummary(cfg) {
@@ -645,6 +645,7 @@ App.launchGame = function (opts) {
     console.error(e);
     return;
   }
+  if (App.share) App.share.attach(container, opts.mode);   /* transmite la partida al docente si el grupo entró con su código */
   App.roam.navBtn('inicio');
 };
 
@@ -652,13 +653,18 @@ App.launchGame = function (opts) {
 App.go = function (key) {
   const app = document.getElementById('app');
   if (!app) return;
-  location.hash = '/' + (key || 'inicio');
+  const h = '/' + (key || 'inicio');
+  /* si ya estamos en esa ruta el navegador no dispara hashchange: se enruta a mano
+     (así "Volver al inicio" funciona también después de terminar una partida) */
+  if (location.hash === '#' + h) { route(); return; }
+  location.hash = h;
 };
 
 function route() {
   const app = document.getElementById('app');
   if (!app) return;
   App.ludoInGame = false;
+  if (App.share) App.share.detach();
   app.classList.remove('game-view');
   App.roam.renderUserBar();
   const user = App.auth.who();
