@@ -82,16 +82,45 @@ function attach(io, opts) {
     };
   }
 
-  /* La pregunta pendiente va SOLO al jugador que debe responder (y al docente). */
+  /* La pregunta pendiente va al jugador que debe responder (y al docente).
+   * En Batalla (equipos) va a todo el equipo en turno; solo el vocero puede actuar. */
   function emitPregunta(r, soloSid) {
     const e = r.estado;
     if (r.fase !== 'jugando' || !e || !e.pendiente || !e.espera) return;
-    const p = jugadorEn(r, e.espera.asiento);
+    const asientoEsp = e.espera.asiento;
+    const p = jugadorEn(r, asientoEsp);
     const msg = Object.assign(
-      { v: e.v, tipo: e.pendiente.tipo, asiento: e.espera.asiento, vence: r.turnoVence || null, ahora: Date.now() },
+      { v: e.v, tipo: e.pendiente.tipo, asiento: asientoEsp, vence: r.turnoVence || null, ahora: Date.now() },
       r.mazo.publica(e.pendiente.qid)
     );
-    if (soloSid) { if (soloSid === (p && p.sid) || soloSid === r.hostSid) io.to(soloSid).emit('partida:pregunta', msg); return; }
+    if (soloSid) {
+      // comprobar si debe recibirla
+      if (soloSid === r.hostSid) { io.to(soloSid).emit('partida:pregunta', msg); return; }
+      if (r.juego === 'batalla' && p) {
+        const equipo = asientoEsp % 2;
+        // enviar a todo el equipo
+        for (let i = 0; i < r.orden.length; i++) {
+          if (i % 2 === equipo) {
+            const pj = jugadorEn(r, i);
+            if (pj && pj.online && pj.sid === soloSid) { io.to(soloSid).emit('partida:pregunta', msg); return; }
+          }
+        }
+        return;
+      }
+      if (soloSid === (p && p.sid)) { io.to(soloSid).emit('partida:pregunta', msg); return; }
+      return;
+    }
+    if (r.juego === 'batalla') {
+      const equipo = asientoEsp % 2;
+      for (let i = 0; i < r.orden.length; i++) {
+        if (i % 2 === equipo) {
+          const pj = jugadorEn(r, i);
+          if (pj && pj.online && pj.sid) io.to(pj.sid).emit('partida:pregunta', msg);
+        }
+      }
+      if (r.hostSid) io.to(r.hostSid).emit('partida:pregunta', msg);
+      return;
+    }
     if (p && p.online && p.sid) io.to(p.sid).emit('partida:pregunta', msg);
     if (r.hostSid) io.to(r.hostSid).emit('partida:pregunta', msg);
   }
@@ -183,14 +212,23 @@ function attach(io, opts) {
 
       const a = d.ajustes && typeof d.ajustes === 'object' ? d.ajustes : {};
       const turnoSeg = d.turnoSeg === undefined ? lim.turnoPorDefecto : (+d.turnoSeg ? Math.min(lim.turnoMax, Math.max(lim.turnoMin, +d.turnoSeg | 0)) : 0);
-      const tiempoSeg = +d.tiempoSeg ? Math.min(lim.tiempoMax, Math.max(lim.tiempoMin, +d.tiempoSeg | 0)) : 0;
+      const tiempoSeg = d.tiempoSeg !== undefined ? (+d.tiempoSeg ? Math.min(lim.tiempoMax, Math.max(lim.tiempoMin, +d.tiempoSeg | 0)) : 0) : (+a.timeSeconds ? Math.min(lim.tiempoMax, Math.max(lim.tiempoMin, +a.timeSeconds | 0)) : 0);
+      // Validar ajustes por juego
+      const ajustes = {};
+      if (a.trackLength !== undefined) { const v = Math.max(5, Math.min(50, +a.trackLength | 0)); ajustes.trackLength = v; }
+      if (a.rows !== undefined) { const v = Math.max(4, Math.min(12, +a.rows | 0)); ajustes.rows = v; }
+      if (a.cols !== undefined) { const v = Math.max(4, Math.min(12, +a.cols | 0)); ajustes.cols = v; }
+      if (a.hpTotal !== undefined) { const v = Math.max(50, Math.min(500, +a.hpTotal | 0)); ajustes.hpTotal = v; }
+      if (a.timeSeconds !== undefined && tiempoSeg === 0) {
+        // ya manejado arriba si viene por separado
+      }
       const codigo = nuevoCodigo(), token = crypto.randomBytes(12).toString('hex');
       const modulo = JUEGOS[d.juego];
       const r = {
         codigo: codigo, juego: d.juego, modulo: modulo, token: token, hostSid: s.id,
         fase: 'sala', estado: null, fin: null,
         mazo: Preguntas.crearMazo(banco.preguntas, { rng: rng, mezclarOpciones: a.mezclarOpciones !== false }),
-        ajustes: {},                       // ajustes propios de cada juego (se irán validando por juego)
+        ajustes: ajustes,
         turnoSeg: turnoSeg, tiempoSeg: tiempoSeg, turnoVence: null, partidaVence: null,
         jugadores: new Map(), orden: [], registro: [],
         creada: Date.now(), ultima: Date.now(), terminadaEn: null, timerTurno: null, timerPartida: null
