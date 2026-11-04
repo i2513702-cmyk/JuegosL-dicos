@@ -56,6 +56,7 @@ App.games.carrera = (function (ui) {
       cells.appendChild(ui.el('div', 'tr-meta', '🏁'));
     } else {
       OBSTACLES.forEach((i) => {
+        if (i >= TOTAL) return;   /* pista corta: ese obstaculo no existe */
         const mark = ui.el('div', 'tr-obs', '⚠️');
         placeOnRoad(mark, i, 0, 7);
         cells.appendChild(mark);
@@ -411,6 +412,7 @@ App.games.carrera = (function (ui) {
       cells.appendChild(ui.el('div', 'tr-meta', '🏁'));
     } else {
       OBSTACLES.forEach((i) => {
+        if (i >= TOTAL) return;   /* pista corta: ese obstaculo no existe */
         const mark = ui.el('div', 'tr-obs', '⚠️');
         placeOnRoadNet(mark, i, 0, 7);
         cells.appendChild(mark);
