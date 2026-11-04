@@ -3,7 +3,7 @@
  * Pantalla "Ludo en red" (ruta #/red y #/red/CODIGO).
  *  - Docente: crea la sala, ve quién entra y pulsa "Iniciar partida".
  *  - Alumno : escribe el código y su nombre; espera al docente.
- * Al empezar la partida dibuja el tablero con App.games.ludo.initNet.
+ * Al empezar la partida arma la escena (SVG + capa + panel) y llama a App.games[juego].initNet.
  * Depende de App.net (core/net.js), que habla con servidor/partidas.js.
  * ============================================================ */
 window.App = window.App || {};

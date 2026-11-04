@@ -52,7 +52,7 @@ App.games.conquista = (function (ui) {
 /* geometria de la escena (SVG terreno-de-conquista.svg, viewBox 680x380):
    el tablero dibujado en la imagen va de x=40..640 e y=20..360, en 8x8 celdas.
    Si el modo no usa escenario (o cambia de tamaño), se cae a un tablero propio. */
-const SCENE = { W: 680, H: 380, BOARD_X: 40, BOARD_Y: 20, CELL_W: 75, CELL_H: 42.5 };
+const SCENE = { W: 680, H: 380, BOARD_X: 40, BOARD_Y: 20, BOARD_W: 600, BOARD_H: 340 };
 
 const mapEl = ui.el('div', 'cq-map', '');
 const inScene = !!config.escenaCapa;
@@ -113,10 +113,12 @@ if (inScene) {
           const owner = mapa[idx];
           const btn = ui.el('button', 'cq-zone' + (owner === null || owner === undefined ? ' cq-neutral' : ''), '');
           if (inScene) {
-            btn.style.left = (SCENE.BOARD_X + c * SCENE.CELL_W) / SCENE.W * 100 + '%';
-            btn.style.top = (SCENE.BOARD_Y + r * SCENE.CELL_H) / SCENE.H * 100 + '%';
-            btn.style.width = SCENE.CELL_W / SCENE.W * 100 + '%';
-            btn.style.height = SCENE.CELL_H / SCENE.H * 100 + '%';
+            /* el tablero del SVG mide 600x340: la celda se reparte segun filas/columnas reales */
+            const cw = SCENE.BOARD_W / colsM, ch = SCENE.BOARD_H / rowsM;
+            btn.style.left = (SCENE.BOARD_X + c * cw) / SCENE.W * 100 + '%';
+            btn.style.top = (SCENE.BOARD_Y + r * ch) / SCENE.H * 100 + '%';
+            btn.style.width = cw / SCENE.W * 100 + '%';
+            btn.style.height = ch / SCENE.H * 100 + '%';
           } else {
             btn.style.position = 'static';
             btn.style.width = '100%';
@@ -374,7 +376,7 @@ if (inScene) {
 
     const counters = ui.el('div', 'flex flex-wrap gap-2 justify-center mb-3', '');
     root.appendChild(counters);
-    const SCENE = { W: 680, H: 380, BOARD_X: 40, BOARD_Y: 20, CELL_W: 75, CELL_H: 42.5 };
+    const SCENE = { W: 680, H: 380, BOARD_X: 40, BOARD_Y: 20, BOARD_W: 600, BOARD_H: 340 };
     const mapEl = ui.el('div', 'cq-map', '');
     const inScene = !!config.escenaCapa;
     if (inScene && config.escenaCapa) {
@@ -423,10 +425,11 @@ if (inScene) {
           const owner = mapa[idx];
           const btn = ui.el('button','cq-zone'+(owner===null||owner===undefined?' cq-neutral':''),'');
           if(inScene){
-            btn.style.left=(SCENE.BOARD_X+c*SCENE.CELL_W)/SCENE.W*100+'%';
-            btn.style.top=(SCENE.BOARD_Y+r*SCENE.CELL_H)/SCENE.H*100+'%';
-            btn.style.width=SCENE.CELL_W/SCENE.W*100+'%';
-            btn.style.height=SCENE.CELL_H/SCENE.H*100+'%';
+            const cw=SCENE.BOARD_W/colsM, ch=SCENE.BOARD_H/rowsM;   /* el tablero del SVG mide 600x340 */
+            btn.style.left=(SCENE.BOARD_X+c*cw)/SCENE.W*100+'%';
+            btn.style.top=(SCENE.BOARD_Y+r*ch)/SCENE.H*100+'%';
+            btn.style.width=cw/SCENE.W*100+'%';
+            btn.style.height=ch/SCENE.H*100+'%';
           }else{ btn.style.position='static'; btn.style.width='100%'; btn.style.height='100%'; }
           if(owner===null||owner===undefined){ btn.appendChild(ui.el('span','cq-flag','🌫️')); }
           else {
@@ -543,7 +546,7 @@ if (inScene) {
     });
 
     const offs=[]; let tickNet=null;
-    function limpiarNet(){ if(!vivo)return; vivo=false; offs.forEach((fn)=>{try{fn();}catch(e){}); if(tickNet) clearInterval(tickNet); }
+    function limpiarNet(){ if(!vivo)return; vivo=false; offs.forEach((fn)=>{try{fn();}catch(e){}}); if(tickNet) clearInterval(tickNet); }
     function alCerrarNet(){ limpiarNet(); if(ui.toast)ui.toast('El docente cerró la sala','warn'); App.go((config.rol||(NET.rol?NET.rol():''))==='docente'?'inicio':'red'); }
     function alExpulsarNet(){ limpiarNet(); if(ui.toast)ui.toast('El docente te sacó de la sala','warn'); App.go('red'); }
 
